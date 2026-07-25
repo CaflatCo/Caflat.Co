@@ -52,7 +52,7 @@ function endEventSession() {
   // while the operator is still standing at the table.
   const stocked = _eventStockedLines(event.id);
   if (stocked.length) { openEventLeftoverModal(event.id); return; }
-  _finalizeEventSession(event);
+  _endWithSnapshot(event.id);
 }
 
 function _finalizeEventSession(event) {
@@ -127,12 +127,23 @@ function openEventLeftoverModal(eventId) {
 }
 
 function saveEventLeftovers(eventId) {
+  // Clamp to what was actually stocked. The input's max attribute is only a
+  // browser hint; without this, typing 400 against 40 stocked would credit
+  // 400 units of inventory that never existed.
+  const stocked = new Map(_eventStockedLines(eventId).map(l => [String(l.productId), l.qty]));
+  const alreadyBack = new Map(
+    ((getEvents().find(e => String(e.id) === String(eventId)) || {}).returnedItems || [])
+      .map(r => [String(r.productId), Number(r.qty || 0)]));
+
   const returned = Array.from(
     document.querySelectorAll('#eventLeftoverRows [data-leftover-product]'))
-    .map(row => ({
-      productId: row.dataset.leftoverProduct,
-      qty:       Math.max(0, Number(row.querySelector('.leftover-qty')?.value || 0)),
-    }))
+    .map(row => {
+      const productId = row.dataset.leftoverProduct;
+      const asked     = Math.max(0, Number(row.querySelector('.leftover-qty')?.value || 0));
+      const room      = Math.max(0,
+        (stocked.get(String(productId)) || 0) - (alreadyBack.get(String(productId)) || 0));
+      return { productId, qty: Math.min(asked, room) };
+    })
     .filter(r => r.qty > 0);
 
   if (returned.length) {
@@ -157,20 +168,38 @@ function saveEventLeftovers(eventId) {
     const events = getEvents();
     const event  = events.find(e => String(e.id) === String(eventId));
     if (event) {
-      event.returnedItems = returned;
+      // Accumulate. A session can be run, ended, restarted and ended again;
+      // assigning would drop the earlier reconciliation and its cost credit.
+      const merged = new Map(
+        (event.returnedItems || []).map(r => [String(r.productId), Number(r.qty || 0)]));
+      returned.forEach(r => merged.set(String(r.productId),
+        (merged.get(String(r.productId)) || 0) + r.qty));
+      event.returnedItems = Array.from(merged, ([productId, qty]) => ({ productId, qty }));
       updateState('events', () => events);
     }
   }
 
   closeModal('eventLeftoverModal');
-  const active = getActiveEvent();
-  if (active) _finalizeEventSession(active);
+  _endWithSnapshot(eventId);
   renderEventsTable();
 }
 
-function skipEventLeftovers() {
+function skipEventLeftovers(eventId) {
   closeModal('eventLeftoverModal');
+  _endWithSnapshot(eventId);
+}
+
+/* Freeze what the goods cost today, then close the session. From here the
+   event reports the same numbers no matter how ingredient prices move. */
+function _endWithSnapshot(eventId) {
   const active = getActiveEvent();
+  const id     = eventId || active?.id;
+  const events = getEvents();
+  const event  = events.find(e => String(e.id) === String(id));
+  if (event && !event.costSnapshot) {
+    event.costSnapshot = _buildEventCostSnapshot(event);
+    updateState('events', () => events);
+  }
   if (active) _finalizeEventSession(active);
 }
 
@@ -346,11 +375,39 @@ function _getEventRevenue(eventId) {
 ═══════════════════════════════════════════════════════ */
 
 /* Per-unit cost via analytics.js's documented single source of truth,
-   which also folds in packaging. */
-function _eventUnitCost(productId) {
-  const p = (APP_STATE.products || []).find(x => String(x.id) === String(productId));
-  if (!p || typeof calculateProductCost !== 'function') return 0;
-  return calculateProductCost(p.recipe, p.recipeMode, p.batchYield, p.packagingItems);
+   which also folds in packaging.
+
+   `frozen` is an event's costSnapshot: once a session has ended, the event
+   reports what the goods cost on the day. Without it, raising an ingredient
+   price later would silently rewrite the profit of every past event.
+
+   The live-cost path memoises per call so ten lines of the same product
+   don't each re-walk its recipe. */
+function _eventUnitCost(productId, frozen, memo) {
+  const key = String(productId);
+  if (frozen && Object.prototype.hasOwnProperty.call(frozen, key)) {
+    return Number(frozen[key]) || 0;
+  }
+  if (memo && memo.has(key)) return memo.get(key);
+
+  const p = (APP_STATE.products || []).find(x => String(x.id) === key);
+  const cost = (!p || typeof calculateProductCost !== 'function')
+    ? 0
+    : calculateProductCost(p.recipe, p.recipeMode, p.batchYield, p.packagingItems);
+  if (memo) memo.set(key, cost);
+  return cost;
+}
+
+/* Snapshot every product this event stocked, at today's costs. Called when
+   a session ends so the event's numbers stop moving afterwards. */
+function _buildEventCostSnapshot(event) {
+  const memo = new Map();
+  const snap = {};
+  getEventProducedCost(event).lines.forEach(l => {
+    const key = String(l.productId);
+    if (!(key in snap)) snap[key] = _eventUnitCost(key, null, memo);
+  });
+  return snap;
 }
 
 /* Units a production line actually yielded. Same rule production.js uses
@@ -381,9 +438,12 @@ function getEventProducedCost(event) {
     if (qty > 0) lines.push({ productId: l.productId, qty, source: 'manual' });
   });
 
+  const frozen = event.costSnapshot || null;
+  const memo   = new Map();
+
   let fromJobs = 0, fromManual = 0, units = 0;
   lines.forEach(l => {
-    const cost = l.qty * _eventUnitCost(l.productId);   // deleted product -> 0
+    const cost = l.qty * _eventUnitCost(l.productId, frozen, memo); // deleted product -> 0
     if (l.source === 'job') fromJobs += cost; else fromManual += cost;
     units += l.qty;
   });
@@ -391,7 +451,7 @@ function getEventProducedCost(event) {
   // Units carried back at the end of the session were never consumed, so
   // their cost comes back off the event.
   const returnedCost = (event.returnedItems || []).reduce(
-    (s, r) => s + Number(r.qty || 0) * _eventUnitCost(r.productId), 0);
+    (s, r) => s + Number(r.qty || 0) * _eventUnitCost(r.productId, frozen, memo), 0);
 
   return {
     fromJobs, fromManual, units, lines,
@@ -1099,14 +1159,34 @@ function _breakEvenFocusEvent() {
   return dated[0] || null;
 }
 
-function _breakEvenBarHtml(be) {
-  const cls = be.reached ? ' is-profit' : '';
+/* Always emits both segments at zero width. The widths are applied by
+   _paintBreakEvenBars after the node is in the document, because a CSS
+   transition needs an existing element to move from: writing the final
+   width straight into the markup makes the bar jump rather than glide. */
+function _breakEvenBarHtml() {
   return `
-    <div class="be-track${cls}">
-      <div class="be-fill" style="width:${be.pct.toFixed(1)}%;"></div>
-      ${be.overflowPct > 0
-        ? `<div class="be-overflow" style="width:${be.overflowPct.toFixed(1)}%;"></div>` : ''}
+    <div class="be-track">
+      <div class="be-fill" style="width:0%;"></div>
+      <div class="be-overflow" style="width:0%;"></div>
     </div>`;
+}
+
+/* Paint one track. Re-uses the existing nodes when they are already on
+   screen, so repeated refreshes animate instead of snapping. */
+function _paintBreakEvenBar(host, be) {
+  const track = host?.querySelector('.be-track');
+  if (!track) return;
+  const apply = () => {
+    track.classList.toggle('is-profit', be.reached);
+    const fill = track.querySelector('.be-fill');
+    const over = track.querySelector('.be-overflow');
+    if (fill) fill.style.width = `${be.pct.toFixed(1)}%`;
+    if (over) over.style.width = `${be.overflowPct.toFixed(1)}%`;
+  };
+  if (track.dataset.painted === 'true') { apply(); return; }
+  // First paint: let the zero-width state land, then transition from it.
+  track.dataset.painted = 'true';
+  requestAnimationFrame(() => requestAnimationFrame(apply));
 }
 
 function renderEventBreakEvenPanel() {
@@ -1114,7 +1194,7 @@ function renderEventBreakEvenPanel() {
   if (!host) return;
 
   const event = _breakEvenFocusEvent();
-  if (!event) { host.innerHTML = ''; host.style.display = 'none'; return; }
+  if (!event) { host.innerHTML = ''; host.dataset.shape = ''; host.style.display = 'none'; return; }
   host.style.display = 'block';
 
   const be     = getEventBreakEven(event.id);
@@ -1127,6 +1207,7 @@ function renderEventBreakEvenPanel() {
   const needsSession = !isActive && String(event.date || '') === today;
 
   if (be.unset) {
+    host.dataset.shape = `unset:${event.id}`;
     host.innerHTML = `
       <div class="be-panel">
         <div class="be-head">
@@ -1147,36 +1228,50 @@ function renderEventBreakEvenPanel() {
   }
 
   const stat = (k, v) => `<div class="be-stat"><span>${k}</span><b>${v}</b></div>`;
+  // Rebuild only when the shape changes. Re-emitting the track on every
+  // sale would replace the node and kill its width transition.
+  const shape = `panel:${event.id}:${needsSession}:${isActive}`;
 
-  host.innerHTML = `
-    <div class="be-panel">
-      <div class="be-head">
-        <div>
-          <div class="be-eyebrow">Break-even${isActive ? ' · live' : ''}</div>
-          <div class="be-event">${escapeHtml(event.name)}</div>
+  if (host.dataset.shape !== shape) {
+    host.dataset.shape = shape;
+    host.innerHTML = `
+      <div class="be-panel">
+        <div class="be-head">
+          <div>
+            <div class="be-eyebrow">Break-even${isActive ? ' · live' : ''}</div>
+            <div class="be-event">${escapeHtml(event.name)}</div>
+          </div>
+          <div class="be-headline"></div>
         </div>
-        <div class="be-headline${be.reached ? ' is-profit' : ''}">
-          ${be.reached
-            ? `In profit <b>+${formatCurrency(be.profit)}</b>`
-            : `<b>${formatCurrency(be.remaining)}</b> to break even`}
-        </div>
-      </div>
-      ${_breakEvenBarHtml(be)}
-      <div class="be-stats">
-        ${stat('Target',   formatCurrency(be.target))}
-        ${stat('Revenue',  formatCurrency(be.revenue))}
-        ${stat('Expenses', formatCurrency(be.expenses))}
-        ${stat('Stocked',  formatCurrency(be.producedCost))}
-        ${stat('Sold',     `${be.unitsSold} of ${be.unitsProduced}`)}
-      </div>
-      ${needsSession ? `
-        <div class="be-nudge">
-          This event is today and no session is running, so sales are not
-          being counted toward it.
-          <button class="btn btn-sm" type="button"
-            data-action="activate-event" data-id="${event.id}">Start session</button>
-        </div>` : ''}
-    </div>`;
+        ${_breakEvenBarHtml()}
+        <div class="be-stats"></div>
+        ${needsSession ? `
+          <div class="be-nudge">
+            This event is today and no session is running, so sales are not
+            being counted toward it.
+            <button class="btn btn-sm" type="button"
+              data-action="activate-event" data-id="${event.id}">Start session</button>
+          </div>` : ''}
+      </div>`;
+  }
+
+  const headline = host.querySelector('.be-headline');
+  if (headline) {
+    headline.classList.toggle('is-profit', be.reached);
+    headline.innerHTML = be.reached
+      ? `In profit <b>+${formatCurrency(be.profit)}</b>`
+      : `<b>${formatCurrency(be.remaining)}</b> to break even`;
+  }
+  const stats = host.querySelector('.be-stats');
+  if (stats) {
+    stats.innerHTML =
+      stat('Target',   formatCurrency(be.target)) +
+      stat('Revenue',  formatCurrency(be.revenue)) +
+      stat('Expenses', formatCurrency(be.expenses)) +
+      stat('Stocked',  formatCurrency(be.producedCost)) +
+      stat('Sold',     `${be.unitsSold} of ${be.unitsProduced}`);
+  }
+  _paintBreakEvenBar(host, be);
 }
 
 function renderPosBreakEvenBar() {
@@ -1184,12 +1279,13 @@ function renderPosBreakEvenBar() {
   if (!host) return;
 
   const active = getActiveEvent();
-  if (!active) { host.innerHTML = ''; host.style.display = 'none'; return; }
+  if (!active) { host.innerHTML = ''; host.dataset.shape = ''; host.style.display = 'none'; return; }
 
   const be = getEventBreakEven(active.id);
   host.style.display = 'block';
 
   if (be.unset) {
+    host.dataset.shape = `slim-unset:${active.id}`;
     host.innerHTML = `
       <div class="be-slim">
         <div class="be-slim-top">
@@ -1200,16 +1296,29 @@ function renderPosBreakEvenBar() {
     return;
   }
 
-  host.innerHTML = `
-    <div class="be-slim">
-      <div class="be-slim-top">
-        <span class="be-slim-name">${escapeHtml(active.name)}</span>
-        <span class="be-slim-num${be.reached ? ' is-profit' : ''}">
-          ${be.reached ? `+${formatCurrency(be.profit)}` : `${formatCurrency(be.remaining)} to go`}
-        </span>
-      </div>
-      ${_breakEvenBarHtml(be)}
-    </div>`;
+  // Same rule as the panel: keep the track node alive across refreshes so
+  // the width transition has something to animate from.
+  const shape = `slim:${active.id}`;
+  if (host.dataset.shape !== shape) {
+    host.dataset.shape = shape;
+    host.innerHTML = `
+      <div class="be-slim">
+        <div class="be-slim-top">
+          <span class="be-slim-name">${escapeHtml(active.name)}</span>
+          <span class="be-slim-num"></span>
+        </div>
+        ${_breakEvenBarHtml()}
+      </div>`;
+  }
+
+  const num = host.querySelector('.be-slim-num');
+  if (num) {
+    num.classList.toggle('is-profit', be.reached);
+    num.textContent = be.reached
+      ? `+${formatCurrency(be.profit)}`
+      : `${formatCurrency(be.remaining)} to go`;
+  }
+  _paintBreakEvenBar(host, be);
 }
 
 /* Single entry point called from every path that moves the numbers. */
