@@ -847,13 +847,23 @@ th {
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover td { background: var(--gray-50); }
 
+/* Fixed track widths, not auto — each <td> is its own formatting context, so
+   auto-sized tracks would size per-row and the columns would still stagger.
+   Rows render an empty placeholder for any action that doesn't apply, which
+   keeps every button on a shared vertical rail. */
 .table-actions {
-  display: flex;
-  justify-content: flex-end;
+  --act-view:     58px;
+  --act-status:   92px;
+  --act-checkout: 84px;
+  display: grid;
+  grid-template-columns:
+    var(--act-view) var(--act-status) var(--act-checkout) 28px;
+  justify-content: end;
   align-items: center;
   gap: 6px;
   white-space: nowrap;
 }
+.table-actions > .btn { width: 100%; justify-content: center; }
 
 /* Row overflow menu — a "⋯" button that reveals secondary row actions.
    The dropdown is appended to <body> and positioned with position:fixed via JS

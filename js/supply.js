@@ -234,7 +234,7 @@ function renderClientsList() {
           ${[c.contact, c.email].filter(Boolean).map(escapeHtml).join(' · ') || 'No contact info'}
         </div>
       </div>
-      <div style="display:flex;gap:6px;">
+      <div style="display:flex;gap:6px;align-items:center;">
         <button class="btn btn-sm" data-action="client-portal" data-id="${c.id}"
           style="display:inline-flex;align-items:center;gap:5px;">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -245,11 +245,21 @@ function renderClientsList() {
           Order Portal
         </button>
         <button class="btn btn-sm btn-secondary" data-action="client-statement" data-id="${c.id}">Statement</button>
-        ${c.portal?.termsMode === 'consignment'
-          ? `<button class="btn btn-sm btn-secondary" data-action="consignment-ledger" data-id="${c.id}">Ledger</button>`
-          : ''}
-        <button class="btn btn-sm btn-secondary" data-action="edit-client" data-id="${c.id}">Edit</button>
-        <button class="btn btn-sm btn-secondary" data-action="delete-client" data-id="${c.id}">Delete</button>
+        <div class="row-menu">
+          <button type="button" class="row-menu-btn" data-action="toggle-client-row-menu"
+            data-menu-scope="client" data-id="${c.id}" aria-label="More actions">⋯</button>
+          <template class="row-menu-template">
+            <div class="row-menu-dropdown">
+              ${c.portal?.termsMode === 'consignment'
+                ? `<button type="button" data-action="consignment-ledger"
+                    data-id="${c.id}">Consignment Stock</button>`
+                : ''}
+              <button type="button" data-action="edit-client" data-id="${c.id}">Edit</button>
+              <button type="button" class="danger" data-action="delete-client"
+                data-id="${c.id}">Delete</button>
+            </div>
+          </template>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -1747,13 +1757,15 @@ async function openConsignmentLedger(clientId) {
   }
   m.innerHTML = `
     <div class="modal" style="max-width:min(560px, 94vw);">
-      <h3 style="margin-bottom:2px;">Consignment Ledger — ${escapeHtml(client.name)}</h3>
-      <div style="font-size:12px;color:var(--gray-400);margin-bottom:18px;">
-        Current stock on hand and recent reconciled sell-through.
+      <h3 style="margin-bottom:2px;">Consignment Stock — ${escapeHtml(client.name)}</h3>
+      <div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">
+        Your stock currently held at this client's location, and what has
+        sold through so far.
       </div>
-      <div class="section-title" style="margin-top:0;">On Hand</div>
+      <div id="ledgerTotals" style="margin-bottom:18px;"></div>
+      <div class="section-title" style="margin-top:0;">On Hand Now</div>
       <div id="ledgerOnHand" style="margin-bottom:20px;">Loading…</div>
-      <div class="section-title" style="margin-top:0;">Recent Reports</div>
+      <div class="section-title" style="margin-top:0;">Reconciled Sell-Through</div>
       <div id="ledgerHistory">Loading…</div>
       <div class="modal-actions">
         <button class="btn btn-secondary" type="button" onclick="closeModal('consignmentLedgerModal')">Close</button>
@@ -1772,6 +1784,28 @@ async function openConsignmentLedger(clientId) {
   ]);
 
   const stock = (stockRes.ok && Array.isArray(stockRes.data)) ? stockRes.data : [];
+
+  // Headline totals — what's out there, and what it's worth. Derived from the
+  // same rows listed below, so the two can never disagree.
+  const totalsEl = document.getElementById('ledgerTotals');
+  if (totalsEl) {
+    const totalUnits = stock.reduce((s, r) => s + Number(r.on_hand || 0), 0);
+    const totalValue = stock.reduce((s, r) =>
+      s + Number(r.on_hand || 0) * Number(r.unit_price || 0), 0);
+    const figure = (label, value) => `
+      <div style="flex:1;">
+        <div style="font-size:9px;font-weight:800;letter-spacing:1px;
+          text-transform:uppercase;color:var(--gray-400);margin-bottom:4px;">${label}</div>
+        <div style="font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;">${value}</div>
+      </div>`;
+    totalsEl.innerHTML = `
+      <div style="display:flex;gap:16px;padding:12px 14px;
+        border:1.5px solid var(--border);border-radius:var(--radius-lg);">
+        ${figure('Units on hand', totalUnits)}
+        ${figure('Value on hand', formatCurrency(totalValue))}
+      </div>`;
+  }
+
   const onHandEl = document.getElementById('ledgerOnHand');
   if (onHandEl) {
     onHandEl.innerHTML = stock.length
@@ -3144,10 +3178,11 @@ function renderSupplyTable() {
               data-id="${order.id}">Set Status</button>
             ${canAdvance && !order.salesRecordId
               ? `<button class="btn btn-sm btn-secondary" data-action="open-supply-checkout"
-                  data-id="${order.id}">Checkout</button>` : ''}
+                  data-id="${order.id}">Checkout</button>`
+              : `<span aria-hidden="true"></span>`}
             <div class="row-menu">
               <button type="button" class="row-menu-btn" data-action="toggle-supply-row-menu"
-                data-id="${order.id}" aria-label="More actions">⋯</button>
+                data-menu-scope="order" data-id="${order.id}" aria-label="More actions">⋯</button>
               <template class="row-menu-template">
                 <div class="row-menu-dropdown">
                   <button type="button" data-action="edit-supply-order"
@@ -3180,13 +3215,16 @@ function renderSupplyTable() {
    Appended to <body> and positioned with position:fixed via getBoundingClientRect —
    the table's overflow-x:auto scroll container clips overflow-y too (a CSS quirk),
    so a dropdown nested inside the row would be invisibly clipped. */
-function toggleSupplyRowMenu(orderId) {
-  const wasOpen = document.querySelector(`.row-menu-btn[data-id="${orderId}"]`)?.dataset.menuOpen === 'true';
+function toggleSupplyRowMenu(rowId, scope = 'order') {
+  // Scoped by list — the orders table and the clients list both render
+  // .row-menu-btn, so a bare [data-id] lookup could match the wrong row.
+  const sel = `.row-menu-btn[data-menu-scope="${scope}"][data-id="${rowId}"]`;
+  const wasOpen = document.querySelector(sel)?.dataset.menuOpen === 'true';
   document.querySelectorAll('.row-menu-dropdown').forEach(el => el.remove());
   document.querySelectorAll('.row-menu-btn').forEach(b => b.dataset.menuOpen = 'false');
   if (wasOpen) return;
 
-  const btn = document.querySelector(`.row-menu-btn[data-id="${orderId}"]`);
+  const btn = document.querySelector(sel);
   const template = btn?.parentElement.querySelector('.row-menu-template');
   if (!btn || !template) return;
 
