@@ -216,6 +216,7 @@ async function executeVoid(saleId, reason) {
 
   closeModal('voidModal');
   renderSalesTable();
+  if (typeof refreshEventBreakEven === 'function') refreshEventBreakEven();
   if (typeof refreshDashboard === 'function') refreshDashboard();
   showNotification(`Sale ${sale.receiptNumber} voided — stock restored`, 'success');
 }

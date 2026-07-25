@@ -538,6 +538,9 @@ function bindDelegatedActions() {
       case 'delete-event':            deleteEvent(actionEl.dataset.id || ''); break;
       case 'save-event':              saveEvent(); break;
       case 'activate-event':          activateEvent(actionEl.dataset.id || ''); break;
+      case 'add-planned-item':        if(typeof addPlannedItemRow==='function') addPlannedItemRow(); break;
+      case 'event-leftover-save':     if(typeof saveEventLeftovers==='function') saveEventLeftovers(actionEl.dataset.id || ''); break;
+      case 'event-leftover-skip':     if(typeof skipEventLeftovers==='function') skipEventLeftovers(); break;
       case 'end-event-session':       endEventSession(); break;
       case 'open-event-picker':       openEventPickerModal(); break;
       // Production Mode

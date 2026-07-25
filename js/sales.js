@@ -752,6 +752,9 @@ function buildTransactionSnapshot({ status, paymentStatus, paymentMethod, tender
 
   return {
     id: generateId(), receiptNumber, status, paymentStatus, orderType,
+    // Stamped while an event session is running so the event's revenue and
+    // break-even progress can be attributed. Null during normal trading.
+    eventId: (typeof getActiveEvent === 'function' ? getActiveEvent()?.id : null) || null,
     notes: orderNotes || '',
     customer: { name: customerName || 'Walk-in Customer' },
     payment: {
@@ -971,6 +974,8 @@ async function completeSale(forceStatus = 'COMPLETED') {
   showNotification(isPending ? 'Order marked pending' : 'Sale completed! 🎉', 'success');
   renderSalesTable();
   renderHeldOrdersBadge();
+  // Event break-even moves with every sale
+  if (typeof refreshEventBreakEven === 'function') refreshEventBreakEven();
 }
 
 /* ── Receipt ── */

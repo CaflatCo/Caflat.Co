@@ -34,6 +34,7 @@ function startEventSession(event) {
     type:      event.type || 'Event'
   }));
   applyEventSessionBanner();
+  refreshEventBreakEven();
   if (typeof pushAuditEntry === 'function') {
     pushAuditEntry({
       action:  'EVENT_SESSION_STARTED',
@@ -47,8 +48,17 @@ function startEventSession(event) {
 function endEventSession() {
   const event = getActiveEvent();
   if (!event) return;
+  // Anything stocked but unsold comes home. Ask before clearing the session,
+  // while the operator is still standing at the table.
+  const stocked = _eventStockedLines(event.id);
+  if (stocked.length) { openEventLeftoverModal(event.id); return; }
+  _finalizeEventSession(event);
+}
+
+function _finalizeEventSession(event) {
   updateState('activeEvent', () => null);
   applyEventSessionBanner();
+  refreshEventBreakEven();
   if (typeof pushAuditEntry === 'function') {
     pushAuditEntry({
       action:  'EVENT_SESSION_ENDED',
@@ -57,6 +67,111 @@ function endEventSession() {
     });
   }
   showNotification(`Event session ended: ${event.name}`, 'success');
+}
+
+/* ── Leftovers: units stocked for the event that came back ── */
+
+/* Per-product totals stocked for this event, from production jobs and the
+   manual lineup, collapsed so one product appears once. */
+function _eventStockedLines(eventId) {
+  const event = getEvents().find(e => String(e.id) === String(eventId));
+  const cost  = getEventProducedCost(event);
+  const byProduct = new Map();
+  cost.lines.forEach(l => {
+    const key = String(l.productId);
+    byProduct.set(key, (byProduct.get(key) || 0) + l.qty);
+  });
+  return Array.from(byProduct.entries()).map(([productId, qty]) => {
+    const p = (APP_STATE.products || []).find(x => String(x.id) === String(productId));
+    return { productId, qty, name: p?.name || 'Unknown product' };
+  });
+}
+
+function openEventLeftoverModal(eventId) {
+  const lines = _eventStockedLines(eventId);
+  let m = document.getElementById('eventLeftoverModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'eventLeftoverModal';
+    m.className = 'modal-overlay';
+    document.body.appendChild(m);
+  }
+  m.innerHTML = `
+    <div class="modal" style="max-width:min(460px, 94vw);">
+      <h3>Anything left over?</h3>
+      <div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">
+        Units you carried back go into stock and come off this event's cost.
+        Leave at zero if you sold out.
+      </div>
+      <div id="eventLeftoverRows">
+        ${lines.map(l => `
+          <div class="portal-fields" style="align-items:end;margin-bottom:10px;"
+            data-leftover-product="${l.productId}">
+            <label class="portal-field" style="max-width:none;">
+              <span>${escapeHtml(l.name)}</span>
+              <input type="number" class="leftover-qty" min="0" max="${l.qty}"
+                value="0" placeholder="0" />
+            </label>
+            <span style="font-size:11px;color:var(--gray-400);padding-bottom:11px;">
+              of ${l.qty}</span>
+          </div>`).join('')}
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" type="button"
+          data-action="event-leftover-skip" data-id="${eventId}">Sold out</button>
+        <button class="btn" type="button"
+          data-action="event-leftover-save" data-id="${eventId}">Save and end</button>
+      </div>
+    </div>`;
+  openModal('eventLeftoverModal');
+}
+
+function saveEventLeftovers(eventId) {
+  const returned = Array.from(
+    document.querySelectorAll('#eventLeftoverRows [data-leftover-product]'))
+    .map(row => ({
+      productId: row.dataset.leftoverProduct,
+      qty:       Math.max(0, Number(row.querySelector('.leftover-qty')?.value || 0)),
+    }))
+    .filter(r => r.qty > 0);
+
+  if (returned.length) {
+    // Put the units back. Finished-goods products keep their stock in the FG
+    // ledger, so never touch product.stock for those — same rule void.js follows.
+    const products = (APP_STATE.products || []).map(p => {
+      const hit = returned.find(r => String(r.productId) === String(p.id));
+      if (!hit) return p;
+      if (typeof isFinishedGoodsProduct === 'function' && isFinishedGoodsProduct(p)) return p;
+      return { ...p, stock: Number(p.stock || 0) + hit.qty };
+    });
+    updateState('products', () => products);
+
+    returned.forEach(r => {
+      const p = (APP_STATE.products || []).find(x => String(x.id) === String(r.productId));
+      if (p && typeof isFinishedGoodsProduct === 'function' && isFinishedGoodsProduct(p)
+          && typeof creditFinishedGoods === 'function') {
+        creditFinishedGoods(p.id, p.name, r.qty, 'Event leftovers');
+      }
+    });
+
+    const events = getEvents();
+    const event  = events.find(e => String(e.id) === String(eventId));
+    if (event) {
+      event.returnedItems = returned;
+      updateState('events', () => events);
+    }
+  }
+
+  closeModal('eventLeftoverModal');
+  const active = getActiveEvent();
+  if (active) _finalizeEventSession(active);
+  renderEventsTable();
+}
+
+function skipEventLeftovers() {
+  closeModal('eventLeftoverModal');
+  const active = getActiveEvent();
+  if (active) _finalizeEventSession(active);
 }
 
 function applyEventSessionBanner() {
@@ -95,10 +210,13 @@ function saveEvent() {
   const events   = getEvents();
   const existing = events.find(e => String(e.id) === String(id));
 
+  const plannedItems = collectPlannedItems();
+
   if (existing) {
-    Object.assign(existing, { name, location, type, date, notes, updatedAt: new Date().toISOString() });
+    Object.assign(existing, { name, location, type, date, notes, plannedItems,
+      updatedAt: new Date().toISOString() });
   } else {
-    events.push({ id, name, location, type, date, notes,
+    events.push({ id, name, location, type, date, notes, plannedItems,
       createdAt: new Date().toISOString(), status: 'UPCOMING' });
   }
 
@@ -106,6 +224,7 @@ function saveEvent() {
   closeModal('eventModal');
   clearEventForm();
   renderEventsTable();
+  refreshEventBreakEven();
   showNotification('Event saved', 'success');
 }
 
@@ -118,6 +237,7 @@ function deleteEvent(eventId) {
 
 function openEventModal(eventId = null) {
   clearEventForm();
+  let plannedItems = [];
   if (eventId) {
     const event = getEvents().find(e => String(e.id) === String(eventId));
     if (event) {
@@ -127,14 +247,17 @@ function openEventModal(eventId = null) {
       setElementValue('eventType',     event.type     || 'Event');
       setElementValue('eventDate',     event.date     || '');
       setElementValue('eventNotes',    event.notes    || '');
+      plannedItems = Array.isArray(event.plannedItems) ? event.plannedItems : [];
     }
   }
+  renderPlannedItemsList(plannedItems);
   openModal('eventModal');
 }
 
 function clearEventForm() {
   ['eventId','eventName','eventLocation','eventDate','eventNotes']
     .forEach(id => setElementValue(id, ''));
+  renderPlannedItemsList([]);
 }
 
 function activateEvent(eventId) {
@@ -197,10 +320,122 @@ function renderEventsTable() {
 }
 
 /* ── Event revenue from sales ── */
+function _eventSales(eventId) {
+  if (!eventId) return [];
+  return (APP_STATE.sales || []).filter(s =>
+    String(s.eventId) === String(eventId) &&
+    (s.status || '').toUpperCase() === 'COMPLETED');
+}
+
 function _getEventRevenue(eventId) {
-  return (APP_STATE.sales || [])
-    .filter(s => s.eventId === eventId && (s.status||'').toUpperCase() === 'COMPLETED')
+  return _eventSales(eventId)
     .reduce((sum, s) => sum + Number(s.totals?.total ?? s.total ?? 0), 0);
+}
+
+/* ═══════════════════════════════════════════════════════
+   BREAK-EVEN
+   Goods for an event are made before the doors open, so their cost is
+   committed whether or not they sell. Break-even is therefore a fixed
+   target set at production time, and revenue is the progress toward it:
+
+     target   = logged expenses + cost of everything produced
+     progress = event-tagged revenue
+
+   Because the target does not move as you sell, each sale advances the
+   bar by a predictable amount.
+═══════════════════════════════════════════════════════ */
+
+/* Per-unit cost via analytics.js's documented single source of truth,
+   which also folds in packaging. */
+function _eventUnitCost(productId) {
+  const p = (APP_STATE.products || []).find(x => String(x.id) === String(productId));
+  if (!p || typeof calculateProductCost !== 'function') return 0;
+  return calculateProductCost(p.recipe, p.recipeMode, p.batchYield, p.packagingItems);
+}
+
+/* Units a production line actually yielded. Same rule production.js uses
+   for its own totals: real yield when recorded, else the target once the
+   line is finished, else nothing (it hasn't been made yet). */
+function _producedUnits(line) {
+  return Number(
+    line.actualYield ?? (['DONE', 'QC', 'PACKED'].includes(line.status) ? line.targetQty : 0)
+  ) || 0;
+}
+
+/* Cost of everything stocked for this event, from production jobs tagged
+   to it plus any manually planned lines (for goods bought in, or when
+   Production mode is off). Returns both sources so the UI can show its work. */
+function getEventProducedCost(event) {
+  if (!event) return { fromJobs: 0, fromManual: 0, total: 0, units: 0, lines: [] };
+
+  const lines = [];
+  const jobs = typeof getProductionJobs === 'function' ? (getProductionJobs() || []) : [];
+  jobs.filter(j => String(j.eventId) === String(event.id))
+      .forEach(j => (j.products || []).forEach(l => {
+        const qty = _producedUnits(l);
+        if (qty > 0) lines.push({ productId: l.productId, qty, source: 'job' });
+      }));
+
+  (event.plannedItems || []).forEach(l => {
+    const qty = Number(l.qty || 0);
+    if (qty > 0) lines.push({ productId: l.productId, qty, source: 'manual' });
+  });
+
+  let fromJobs = 0, fromManual = 0, units = 0;
+  lines.forEach(l => {
+    const cost = l.qty * _eventUnitCost(l.productId);   // deleted product -> 0
+    if (l.source === 'job') fromJobs += cost; else fromManual += cost;
+    units += l.qty;
+  });
+
+  // Units carried back at the end of the session were never consumed, so
+  // their cost comes back off the event.
+  const returnedCost = (event.returnedItems || []).reduce(
+    (s, r) => s + Number(r.qty || 0) * _eventUnitCost(r.productId), 0);
+
+  return {
+    fromJobs, fromManual, units, lines,
+    returnedCost,
+    total: Math.max(0, fromJobs + fromManual - returnedCost),
+  };
+}
+
+function getEventBreakEven(eventId) {
+  const event    = getEvents().find(e => String(e.id) === String(eventId)) || null;
+  const revenue  = _getEventRevenue(eventId);
+  const expenses = getEventExpenses(eventId).reduce((s, ex) => s + Number(ex.amount || 0), 0);
+  const produced = getEventProducedCost(event);
+  const target   = expenses + produced.total;
+
+  const sales    = _eventSales(eventId);
+  const unitsSold = sales.reduce((s, sale) =>
+    s + (sale.items || []).reduce((n, i) => n + Number(i.quantity || 0), 0), 0);
+
+  // pct is the fill up to break-even; overflowPct carries the profit beyond
+  // it, so the bar keeps saying something once the target is passed.
+  const pct = target > 0
+    ? Math.min(100, (revenue / target) * 100)
+    : (revenue > 0 ? 100 : 0);
+  const overflowPct = target > 0 && revenue > target
+    ? Math.min(100, ((revenue - target) / target) * 100)
+    : 0;
+
+  return {
+    event, target, revenue, expenses,
+    producedCost: produced.total,
+    fromJobs:     produced.fromJobs,
+    fromManual:   produced.fromManual,
+    returnedCost: produced.returnedCost,
+    unitsProduced: produced.units,
+    unitsSold,
+    remaining: Math.max(0, target - revenue),
+    profit:    revenue - target,
+    pct, overflowPct,
+    reached:   target > 0 ? revenue >= target : revenue > 0,
+    // Nothing stocked and nothing spent: there is no target to track yet.
+    unset:     target <= 0,
+    orders:    sales.length,
+  };
 }
 
 /* ── Channel analytics ── */
@@ -314,6 +549,17 @@ function applyCoffeeCartModeToggle() {
 window.getActiveEvent           = getActiveEvent;
 window.startEventSession        = startEventSession;
 window.endEventSession          = endEventSession;
+window.getEventBreakEven        = getEventBreakEven;
+window.getEventProducedCost     = getEventProducedCost;
+window.refreshEventBreakEven    = refreshEventBreakEven;
+window.renderEventBreakEvenPanel= renderEventBreakEvenPanel;
+window.renderPosBreakEvenBar    = renderPosBreakEvenBar;
+window.addPlannedItemRow        = addPlannedItemRow;
+window.renderPlannedItemsList   = renderPlannedItemsList;
+window.collectPlannedItems      = collectPlannedItems;
+window.updatePlannedItemsTotal  = updatePlannedItemsTotal;
+window.saveEventLeftovers       = saveEventLeftovers;
+window.skipEventLeftovers       = skipEventLeftovers;
 window.applyEventSessionBanner  = applyEventSessionBanner;
 window.getEvents                = getEvents;
 window.saveEvent                = saveEvent;
@@ -363,39 +609,22 @@ function deleteEventExpense(eventId, expenseId) {
   updateState('events', () => events);
 }
 
+/* Derived from getEventBreakEven so the modal and the progress bar can
+   never disagree. Cost is what was stocked for the event, not just what
+   sold: goods made and not sold were still paid for. `ingredientCost` is
+   kept as a key so existing callers keep working, but it now means the
+   cost of everything produced. */
 function getEventProfitability(eventId) {
-  const revenue  = _getEventRevenue(eventId);
-  const expenses = getEventExpenses(eventId).reduce((s, ex) => s + Number(ex.amount || 0), 0);
-
-  // Ingredient cost from sales tagged to this event
-  const sales = (APP_STATE.sales || []).filter(
-    s => s.eventId === eventId && (s.status || '').toUpperCase() === 'COMPLETED'
-  );
-  let ingredientCost = 0;
-  sales.forEach(sale => {
-    (sale.items || []).forEach(item => {
-      const product = (APP_STATE.products || []).find(p => String(p.id) === String(item.productId));
-      if (!product || !Array.isArray(product.recipe)) return;
-      const batchYield = Math.max(1, Number(product.batchYield || 1));
-      const recipeMode = String(product.recipeMode || 'unit');
-      const units      = Number(item.quantity || 0) * Number(item.multiplier || 1);
-      product.recipe.forEach(ri => {
-        const ing = (APP_STATE.ingredients || []).find(i => String(i.id) === String(ri.ingredientId));
-        if (!ing) return;
-        const perUnit = recipeMode === 'batch'
-          ? Number(ri.quantity || 0) / batchYield
-          : Number(ri.quantity || 0);
-        ingredientCost += perUnit * Number(ing.costPerUnit || 0) * units;
-      });
-    });
-  });
-
-  const totalCost = expenses + ingredientCost;
-  const profit    = revenue - totalCost;
-  const margin    = revenue > 0 ? (profit / revenue) * 100 : 0;
-  const orders    = sales.length;
-
-  return { revenue, expenses, ingredientCost, totalCost, profit, margin, orders };
+  const be = getEventBreakEven(eventId);
+  return {
+    revenue:        be.revenue,
+    expenses:       be.expenses,
+    ingredientCost: be.producedCost,
+    totalCost:      be.target,
+    profit:         be.profit,
+    margin:         be.revenue > 0 ? (be.profit / be.revenue) * 100 : 0,
+    orders:         be.orders,
+  };
 }
 
 function openEventProfitabilityModal(eventId) {
@@ -856,10 +1085,211 @@ function getLeadKPIs() {
 }
 
 /* ── Full view render (Phase 2) ── */
+/* ═══════════════════════════════════════════════════════
+   BREAK-EVEN UI — full panel in Events, slim bar in POS
+═══════════════════════════════════════════════════════ */
+
+/* Which event the panel and POS bar describe: the running session, else
+   the most recent event by date so the panel is useful between sessions. */
+function _breakEvenFocusEvent() {
+  const active = getActiveEvent();
+  if (active) return getEvents().find(e => String(e.id) === String(active.id)) || null;
+  const dated = getEvents().slice().sort((a, b) =>
+    String(b.date || '').localeCompare(String(a.date || '')));
+  return dated[0] || null;
+}
+
+function _breakEvenBarHtml(be) {
+  const cls = be.reached ? ' is-profit' : '';
+  return `
+    <div class="be-track${cls}">
+      <div class="be-fill" style="width:${be.pct.toFixed(1)}%;"></div>
+      ${be.overflowPct > 0
+        ? `<div class="be-overflow" style="width:${be.overflowPct.toFixed(1)}%;"></div>` : ''}
+    </div>`;
+}
+
+function renderEventBreakEvenPanel() {
+  const host = document.getElementById('eventBreakEvenPanel');
+  if (!host) return;
+
+  const event = _breakEvenFocusEvent();
+  if (!event) { host.innerHTML = ''; host.style.display = 'none'; return; }
+  host.style.display = 'block';
+
+  const be     = getEventBreakEven(event.id);
+  const active = getActiveEvent();
+  const isActive = active && String(active.id) === String(event.id);
+
+  // An event dated today with no session running means sales are going
+  // untagged. Say so before the whole day is lost rather than after.
+  const today = new Date().toISOString().slice(0, 10);
+  const needsSession = !isActive && String(event.date || '') === today;
+
+  if (be.unset) {
+    host.innerHTML = `
+      <div class="be-panel">
+        <div class="be-head">
+          <div>
+            <div class="be-eyebrow">Break-even</div>
+            <div class="be-event">${escapeHtml(event.name)}</div>
+          </div>
+        </div>
+        <div class="be-empty">
+          Nothing stocked for this event yet. Add its lineup, or tag a
+          production job to it, and the break-even target appears here.
+          <button class="btn btn-sm btn-secondary" type="button"
+            data-action="edit-event" data-id="${event.id}"
+            style="margin-top:10px;">Plan lineup</button>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const stat = (k, v) => `<div class="be-stat"><span>${k}</span><b>${v}</b></div>`;
+
+  host.innerHTML = `
+    <div class="be-panel">
+      <div class="be-head">
+        <div>
+          <div class="be-eyebrow">Break-even${isActive ? ' · live' : ''}</div>
+          <div class="be-event">${escapeHtml(event.name)}</div>
+        </div>
+        <div class="be-headline${be.reached ? ' is-profit' : ''}">
+          ${be.reached
+            ? `In profit <b>+${formatCurrency(be.profit)}</b>`
+            : `<b>${formatCurrency(be.remaining)}</b> to break even`}
+        </div>
+      </div>
+      ${_breakEvenBarHtml(be)}
+      <div class="be-stats">
+        ${stat('Target',   formatCurrency(be.target))}
+        ${stat('Revenue',  formatCurrency(be.revenue))}
+        ${stat('Expenses', formatCurrency(be.expenses))}
+        ${stat('Stocked',  formatCurrency(be.producedCost))}
+        ${stat('Sold',     `${be.unitsSold} of ${be.unitsProduced}`)}
+      </div>
+      ${needsSession ? `
+        <div class="be-nudge">
+          This event is today and no session is running, so sales are not
+          being counted toward it.
+          <button class="btn btn-sm" type="button"
+            data-action="activate-event" data-id="${event.id}">Start session</button>
+        </div>` : ''}
+    </div>`;
+}
+
+function renderPosBreakEvenBar() {
+  const host = document.getElementById('posBreakEvenBar');
+  if (!host) return;
+
+  const active = getActiveEvent();
+  if (!active) { host.innerHTML = ''; host.style.display = 'none'; return; }
+
+  const be = getEventBreakEven(active.id);
+  host.style.display = 'block';
+
+  if (be.unset) {
+    host.innerHTML = `
+      <div class="be-slim">
+        <div class="be-slim-top">
+          <span class="be-slim-name">${escapeHtml(active.name)}</span>
+          <span class="be-slim-num">No target set</span>
+        </div>
+      </div>`;
+    return;
+  }
+
+  host.innerHTML = `
+    <div class="be-slim">
+      <div class="be-slim-top">
+        <span class="be-slim-name">${escapeHtml(active.name)}</span>
+        <span class="be-slim-num${be.reached ? ' is-profit' : ''}">
+          ${be.reached ? `+${formatCurrency(be.profit)}` : `${formatCurrency(be.remaining)} to go`}
+        </span>
+      </div>
+      ${_breakEvenBarHtml(be)}
+    </div>`;
+}
+
+/* Single entry point called from every path that moves the numbers. */
+function refreshEventBreakEven() {
+  renderEventBreakEvenPanel();
+  renderPosBreakEvenBar();
+}
+
+/* ── Manual lineup builder (event modal) ── */
+function _productOptionsHtml(selectedId) {
+  return `<option value="">Select product…</option>` +
+    (APP_STATE.products || []).map(p =>
+      `<option value="${p.id}"${String(p.id) === String(selectedId) ? ' selected' : ''}>
+        ${escapeHtml(p.name)}</option>`).join('');
+}
+
+function renderPlannedItemsList(items = []) {
+  const container = document.getElementById('eventPlannedBuilder');
+  if (!container) return;
+  container.innerHTML = '';
+  items.forEach(item => addPlannedItemRow(item));
+  updatePlannedItemsTotal();
+}
+
+function addPlannedItemRow(item = null) {
+  const container = document.getElementById('eventPlannedBuilder');
+  if (!container) return;
+  const row = document.createElement('div');
+  row.className = 'packaging-row planned-row';
+  row.innerHTML = `
+    <select class="planned-product" style="flex:2;padding:7px 10px;border:1px solid var(--border);
+      border-radius:var(--radius-md);font-family:var(--font-main);font-size:12px;">
+      ${_productOptionsHtml(item?.productId)}
+    </select>
+    <input type="number" class="planned-qty" placeholder="Qty" min="1"
+      value="${item?.qty || ''}"
+      style="width:70px;padding:7px 10px;border:1px solid var(--border);
+        border-radius:var(--radius-md);font-family:var(--font-main);font-size:12px;" />
+    <span class="planned-cost" style="min-width:74px;text-align:right;font-size:11.5px;
+      font-weight:800;color:var(--gray-500);"></span>
+    <button type="button" class="btn btn-sm btn-secondary planned-remove">✕</button>`;
+  row.querySelector('.planned-remove').addEventListener('click', () => {
+    row.remove(); updatePlannedItemsTotal();
+  });
+  row.querySelector('.planned-product').addEventListener('change', updatePlannedItemsTotal);
+  row.querySelector('.planned-qty').addEventListener('input', updatePlannedItemsTotal);
+  container.appendChild(row);
+  updatePlannedItemsTotal();
+}
+
+function collectPlannedItems() {
+  return Array.from(document.querySelectorAll('#eventPlannedBuilder .planned-row'))
+    .map(row => ({
+      productId: row.querySelector('.planned-product')?.value || '',
+      qty:       Number(row.querySelector('.planned-qty')?.value || 0),
+    }))
+    .filter(l => l.productId && l.qty > 0);
+}
+
+/* Live cost per row and a running total, so the target is visible while
+   planning rather than only after saving. */
+function updatePlannedItemsTotal() {
+  let total = 0;
+  document.querySelectorAll('#eventPlannedBuilder .planned-row').forEach(row => {
+    const id  = row.querySelector('.planned-product')?.value || '';
+    const qty = Number(row.querySelector('.planned-qty')?.value || 0);
+    const cost = id && qty > 0 ? qty * _eventUnitCost(id) : 0;
+    total += cost;
+    const cell = row.querySelector('.planned-cost');
+    if (cell) cell.textContent = cost > 0 ? formatCurrency(cost) : '';
+  });
+  const out = document.getElementById('eventPlannedTotal');
+  if (out) out.textContent = formatCurrency(total);
+}
+
 function renderCoffeeCartView() {
   renderEventsTable();
   renderPackagesTable();
   renderLeadsTable();
+  renderEventBreakEvenPanel();
 
   // Lead KPIs
   const kpi = getLeadKPIs();
