@@ -847,13 +847,23 @@ th {
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover td { background: var(--gray-50); }
 
+/* Fixed track widths, not auto — each <td> is its own formatting context, so
+   auto-sized tracks would size per-row and the columns would still stagger.
+   Rows render an empty placeholder for any action that doesn't apply, which
+   keeps every button on a shared vertical rail. */
 .table-actions {
-  display: flex;
-  justify-content: flex-end;
+  --act-view:     58px;
+  --act-status:   92px;
+  --act-checkout: 84px;
+  display: grid;
+  grid-template-columns:
+    var(--act-view) var(--act-status) var(--act-checkout) 28px;
+  justify-content: end;
   align-items: center;
   gap: 6px;
   white-space: nowrap;
 }
+.table-actions > .btn { width: 100%; justify-content: center; }
 
 /* Row overflow menu — a "⋯" button that reveals secondary row actions.
    The dropdown is appended to <body> and positioned with position:fixed via JS
@@ -3118,3 +3128,220 @@ html[data-theme="dark"] .cl-filter-bar select { background: var(--gray-100); col
 /* ═══ CAFLAT 2.0 launcher — the sidebar link styles itself as a nav item ═══ */
 #navMise { display: flex; align-items: center; }
 /* ═══ /CAFLAT 2.0 launcher ═══ */
+
+/* ═══════════════════════════════════════════════════════
+   ORDER PORTAL MODAL
+   Three CSS-toggled tabs over a shared header/footer. Panels and
+   collapsed product details are hidden with display:none and never
+   unrendered — _readPortalModalConfig() collects the saved config by
+   querying the live DOM, so a control absent at save time reads as
+   absent and its stored value is erased.
+═══════════════════════════════════════════════════════ */
+.modal.portal-modal {
+  max-width: min(720px, 94vw);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;           /* the panel scrolls, not the modal */
+  padding: 0;
+}
+.portal-head { flex-shrink: 0; padding: 26px 26px 0; }
+.portal-head h3 { margin-bottom: 16px; }
+
+.portal-tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1.5px solid var(--border);
+}
+.portal-tab {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1.5px;
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  color: var(--gray-500);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--transition), border-color var(--transition);
+}
+.portal-tab:hover { color: var(--black); }
+.portal-tab[aria-selected="true"] {
+  color: var(--black);
+  border-bottom-color: var(--black);
+}
+.portal-tab-count { font-weight: 700; opacity: .55; margin-left: 5px; }
+
+.portal-body { flex: 1; min-height: 0; overflow-y: auto; padding: 22px 26px; }
+.portal-panel { display: none; }
+.portal-panel.active { display: block; animation: portalFade 180ms ease both; }
+@keyframes portalFade { from { opacity: 0; } to { opacity: 1; } }
+
+.portal-foot {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 26px;
+  border-top: 1.5px solid var(--border);
+  background: var(--white);
+}
+
+/* ── Field groups ── */
+.portal-group { margin-bottom: 24px; }
+.portal-group:last-child { margin-bottom: 0; }
+.portal-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--gray-500);
+  margin-bottom: 9px;
+}
+.portal-hint { font-size: 11.5px; color: var(--gray-400); margin-top: 8px; line-height: 1.5; }
+.portal-checks { display: flex; flex-wrap: wrap; gap: 10px 22px; }
+.portal-check {
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; font-size: 13px; font-weight: 700;
+}
+.portal-check input { width: 18px; height: 18px; flex-shrink: 0; }
+
+/* Segmented control — replaces the pill buttons that were styled inline */
+.portal-seg { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.portal-seg button {
+  padding: 8px 15px;
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  background: var(--white);
+  color: var(--black);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+.portal-seg button:hover { border-color: var(--gray-400); }
+.portal-seg button.active {
+  background: var(--black); color: #fff; border-color: var(--black);
+}
+
+/* Two labelled number fields, replacing the run-on rush-fee sentence */
+.portal-fields { display: flex; flex-wrap: wrap; gap: 12px; }
+/* Capped so a two-digit value doesn't sit in a 300px box */
+.portal-field { flex: 1 1 150px; min-width: 0; max-width: 240px; }
+.portal-card-detail .portal-field { max-width: none; }
+.portal-field > span {
+  display: block;
+  font-size: 9.5px; font-weight: 800; letter-spacing: .5px;
+  text-transform: uppercase; color: var(--gray-500); margin-bottom: 5px;
+}
+.portal-field-row { display: flex; align-items: center; gap: 7px; }
+.portal-field input {
+  width: 100%; min-width: 0;
+  padding: 9px 11px;
+  font-size: 14px; font-weight: 800; font-family: inherit;
+  border: 1.5px solid var(--border); border-radius: 8px;
+  background: var(--white); color: var(--black);
+  box-sizing: border-box;
+}
+.portal-field input:focus { outline: none; border-color: var(--black); }
+.portal-field-suffix { font-size: 12px; font-weight: 800; color: var(--gray-500); flex-shrink: 0; }
+
+/* ── Products ── */
+.portal-products-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; margin-bottom: 12px;
+}
+.portal-linkbtn {
+  background: none; border: none; padding: 0;
+  font-family: inherit; font-size: 11.5px; font-weight: 800;
+  color: var(--black); cursor: pointer; text-decoration: underline;
+}
+.portal-linkbtn.muted { color: var(--gray-500); }
+
+.portal-card {
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 8px;
+  background: var(--white);
+  transition: border-color var(--transition), background var(--transition);
+}
+.portal-card.is-offered { border-color: var(--gray-400); }
+.portal-card:not(.is-offered) { background: var(--gray-50); }
+.portal-card-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px; cursor: pointer;
+}
+.portal-card:not(.is-offered) .portal-card-name { color: var(--gray-500); }
+.portal-card-head input { width: 20px; height: 20px; flex-shrink: 0; }
+.portal-card-main { flex: 1; min-width: 0; }
+.portal-card-name { font-weight: 800; font-size: 14px; }
+.portal-card-retail { font-size: 11.5px; color: var(--gray-400); margin-top: 1px; }
+.portal-card-price { text-align: right; flex-shrink: 0; }
+.portal-card-price .k {
+  font-size: 9px; font-weight: 800; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--gray-400);
+}
+.portal-preview { font-weight: 900; font-size: 16px; white-space: nowrap; }
+.portal-card-off { font-size: 11.5px; font-weight: 700; color: var(--gray-400); white-space: nowrap; }
+/* Exactly one of the two right-hand slots shows, so the row height is stable */
+.portal-card.is-offered .portal-card-off { display: none; }
+.portal-card:not(.is-offered) .portal-card-price { display: none; }
+
+/* Collapsed detail stays in the DOM so its values survive save */
+.portal-card-detail { display: none; padding: 0 14px 13px; }
+.portal-card.is-offered .portal-card-detail { display: block; animation: portalReveal 200ms ease both; }
+@keyframes portalReveal {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: none; }
+}
+.portal-card-detail .portal-fields { padding-top: 12px; border-top: 1px dashed var(--gray-200); }
+.portal-tiers { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--gray-200); }
+.portal-tiers-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 8px;
+}
+
+/* ── Share ── */
+.portal-share-box {
+  background: var(--gray-50);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
+.portal-share-row { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+.portal-share-row input {
+  flex: 1; min-width: 0;
+  padding: 9px 11px; font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  border: 1.5px solid var(--border); border-radius: 8px;
+  background: var(--white); color: var(--black);
+}
+.portal-share-grid { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.portal-qr {
+  width: 116px; height: 116px; flex-shrink: 0;
+  border: 1.5px solid var(--border); border-radius: 10px;
+  overflow: hidden; background: #fff; display: grid; place-items: center;
+}
+.portal-share-note { font-size: 11.5px; color: var(--gray-500); line-height: 1.7; min-width: 160px; flex: 1; }
+.portal-revoke {
+  background: none; border: none; padding: 0; margin-top: 6px;
+  font-family: inherit; font-size: 11.5px; font-weight: 800;
+  color: var(--danger); cursor: pointer; text-decoration: underline;
+}
+
+@media (max-width: 560px) {
+  .portal-head, .portal-body, .portal-foot { padding-left: 18px; padding-right: 18px; }
+  .portal-tab { padding: 10px 10px; font-size: 11.5px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-panel.active,
+  .portal-card.is-offered .portal-card-detail { animation: none; }
+}

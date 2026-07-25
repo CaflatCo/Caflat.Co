@@ -55,7 +55,7 @@ function scheduleSyncPush() {
 
   clearTimeout(_syncPushTimer);
   _syncPushTimer = setTimeout(() => {
-    syncPush();
+    syncPush().then(() => pruneSyncLog());
   }, SYNC_DEBOUNCE_MS);
 }
 

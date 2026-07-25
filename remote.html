@@ -13,7 +13,7 @@
   :root {
     --bg: #0c0a09; --card: #171412; --border: rgba(255,255,255,.08);
     --text: #f4f2ee; --dim: rgba(244,242,238,.55); --faint: rgba(244,242,238,.32);
-    --gold: #c8a96e; --green: #3dbd7a; --amber: #e0985c; --red: #e05c5c;
+    --gold: #c8a96e; --green: #3dbd7a; --green-dim: #5f8a72; --amber: #e0985c; --red: #e05c5c;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -57,8 +57,12 @@
   .bars { display: flex; align-items: flex-end; gap: 8px; height: 110px; margin-top: 10px; }
   .barcol { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
   .bar { width: 100%; border-radius: 6px 6px 3px 3px;
-    background: linear-gradient(180deg, var(--gold), rgba(200,169,110,.35)); min-height: 4px; }
-  .bar.today { box-shadow: 0 0 12px rgba(200,169,110,.35); }
+    background: linear-gradient(180deg, var(--green-dim), rgba(95,138,114,.35)); min-height: 4px; }
+  .bar.up { background: linear-gradient(180deg, var(--green), rgba(61,189,122,.35)); }
+  .bar.down { background: linear-gradient(180deg, var(--red), rgba(224,92,92,.35)); }
+  .bar.today { box-shadow: 0 0 12px rgba(95,138,114,.35); }
+  .bar.today.up { box-shadow: 0 0 12px rgba(61,189,122,.35); }
+  .bar.today.down { box-shadow: 0 0 12px rgba(224,92,92,.35); }
   .barday { font-size: .56rem; color: var(--faint); font-weight: 700; }
 
   .updated { text-align: center; font-size: .64rem; color: var(--faint); margin-top: 18px; }
@@ -147,11 +151,18 @@
       days.push({ key, label: d.toLocaleDateString('en-PH', { weekday: 'short' }), v: byDay[key] || 0, today: i === 0 });
     }
     const max = Math.max(1, ...days.map(d => d.v));
-    $('bars').innerHTML = days.map(d => `
+    $('bars').innerHTML = days.map((d, idx) => {
+      let trend = '';
+      if (idx > 0) {
+        if (d.v > days[idx - 1].v) trend = ' up';
+        else if (d.v < days[idx - 1].v) trend = ' down';
+      }
+      return `
       <div class="barcol">
-        <div class="bar${d.today ? ' today' : ''}" style="height:${Math.max(4, Math.round(d.v / max * 100))}%"></div>
+        <div class="bar${d.today ? ' today' : ''}${trend}" style="height:${Math.max(4, Math.round(d.v / max * 100))}%"></div>
         <div class="barday">${d.label}</div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
 
     if (t.updated_at) {
       $('updatedAt').textContent = 'Updated ' + new Date(t.updated_at).toLocaleString('en-PH',

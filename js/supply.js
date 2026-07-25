@@ -234,7 +234,7 @@ function renderClientsList() {
           ${[c.contact, c.email].filter(Boolean).map(escapeHtml).join(' · ') || 'No contact info'}
         </div>
       </div>
-      <div style="display:flex;gap:6px;">
+      <div style="display:flex;gap:6px;align-items:center;">
         <button class="btn btn-sm" data-action="client-portal" data-id="${c.id}"
           style="display:inline-flex;align-items:center;gap:5px;">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -245,11 +245,21 @@ function renderClientsList() {
           Order Portal
         </button>
         <button class="btn btn-sm btn-secondary" data-action="client-statement" data-id="${c.id}">Statement</button>
-        ${c.portal?.termsMode === 'consignment'
-          ? `<button class="btn btn-sm btn-secondary" data-action="consignment-ledger" data-id="${c.id}">Ledger</button>`
-          : ''}
-        <button class="btn btn-sm btn-secondary" data-action="edit-client" data-id="${c.id}">Edit</button>
-        <button class="btn btn-sm btn-secondary" data-action="delete-client" data-id="${c.id}">Delete</button>
+        <div class="row-menu">
+          <button type="button" class="row-menu-btn" data-action="toggle-client-row-menu"
+            data-menu-scope="client" data-id="${c.id}" aria-label="More actions">⋯</button>
+          <template class="row-menu-template">
+            <div class="row-menu-dropdown">
+              ${c.portal?.termsMode === 'consignment'
+                ? `<button type="button" data-action="consignment-ledger"
+                    data-id="${c.id}">Consignment Stock</button>`
+                : ''}
+              <button type="button" data-action="edit-client" data-id="${c.id}">Edit</button>
+              <button type="button" class="danger" data-action="delete-client"
+                data-id="${c.id}">Delete</button>
+            </div>
+          </template>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -706,52 +716,44 @@ function openClientPortalModal(clientId) {
     const multiple = cfg.multiples[p.id];
     const tiers    = cfg.pricing.tiers?.[p.id] || [];
     return `
-      <div class="portal-card" data-portal-product="${p.id}" style="border:1.5px solid var(--border);
-        border-radius:var(--radius-md);padding:12px 14px;margin-bottom:8px;background:var(--white);
-        transition:opacity .15s;">
-        <label style="display:flex;align-items:center;gap:12px;cursor:pointer;">
+      <div class="portal-card${included ? ' is-offered' : ''}" data-portal-product="${p.id}">
+        <label class="portal-card-head">
           <input type="checkbox" class="portal-include" data-product-id="${p.id}"
-            ${included ? 'checked' : ''} onchange="updatePortalPricePreviews()"
-            style="width:20px;height:20px;flex-shrink:0;" />
-          <div style="flex:1;min-width:0;">
-            <div style="font-weight:800;font-size:14px;">${escapeHtml(p.name)}</div>
-            <div style="font-size:11.5px;color:var(--gray-400);margin-top:1px;">Retail ${formatCurrency(Number(p.price || 0))}</div>
+            ${included ? 'checked' : ''} onchange="onPortalIncludeToggle(this)" />
+          <div class="portal-card-main">
+            <div class="portal-card-name">${escapeHtml(p.name)}</div>
+            <div class="portal-card-retail">Retail ${formatCurrency(Number(p.price || 0))}</div>
           </div>
-          <div style="text-align:right;flex-shrink:0;">
-            <div style="font-size:9px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--gray-400);">They Pay</div>
-            <div class="portal-preview" style="font-weight:900;font-size:16px;white-space:nowrap;"></div>
+          <div class="portal-card-price">
+            <div class="k">They pay</div>
+            <div class="portal-preview"></div>
           </div>
+          <div class="portal-card-off">Not offered</div>
         </label>
-        <div class="portal-card-detail" style="display:flex;gap:10px;margin-top:10px;padding-top:10px;
-          border-top:1px dashed var(--gray-200);">
-          <div style="flex:1;">
-            <label style="display:block;font-size:9.5px;font-weight:800;letter-spacing:.5px;
-              text-transform:uppercase;color:var(--gray-500);margin-bottom:4px;">Custom Price <span style="text-transform:none;font-weight:600;opacity:.7;">(optional)</span></label>
-            <input type="number" min="0" step="0.01" class="portal-custom" data-product-id="${p.id}"
-              value="${custom !== undefined && custom !== null && custom !== '' ? custom : ''}"
-              placeholder="${escapeHtml(sym)} —" oninput="updatePortalPricePreviews()"
-              style="width:100%;padding:9px 10px;font-size:13px;border:1.5px solid var(--border);
-                border-radius:8px;font-family:inherit;box-sizing:border-box;" />
+        <div class="portal-card-detail">
+          <div class="portal-fields">
+            <label class="portal-field">
+              <span>Custom price</span>
+              <input type="number" min="0" step="0.01" class="portal-custom" data-product-id="${p.id}"
+                value="${custom !== undefined && custom !== null && custom !== '' ? custom : ''}"
+                placeholder="${escapeHtml(sym)} —" oninput="updatePortalPricePreviews()" />
+            </label>
+            <label class="portal-field">
+              <span>Pack size</span>
+              <input type="number" min="2" step="1" class="portal-multiple" data-product-id="${p.id}"
+                value="${multiple && Number(multiple) >= 2 ? Number(multiple) : ''}"
+                placeholder="e.g. 12" title="Only sold in multiples of this quantity (e.g. 12 = by the dozen)"
+                oninput="updatePortalPricePreviews()" />
+            </label>
           </div>
-          <div style="flex:1;">
-            <label style="display:block;font-size:9.5px;font-weight:800;letter-spacing:.5px;
-              text-transform:uppercase;color:var(--gray-500);margin-bottom:4px;">Sold In Packs Of <span style="text-transform:none;font-weight:600;opacity:.7;">(optional)</span></label>
-            <input type="number" min="2" step="1" class="portal-multiple" data-product-id="${p.id}"
-              value="${multiple && Number(multiple) >= 2 ? Number(multiple) : ''}"
-              placeholder="e.g. 12" title="Only sold in multiples of this quantity (e.g. 12 = by the dozen)"
-              oninput="updatePortalPricePreviews()"
-              style="width:100%;padding:9px 10px;font-size:13px;border:1.5px solid var(--border);
-                border-radius:8px;font-family:inherit;box-sizing:border-box;" />
+          <div class="portal-tiers">
+            <div class="portal-tiers-head">
+              <span class="portal-label" style="margin-bottom:0;">Volume pricing</span>
+              <button type="button" class="btn btn-sm btn-secondary" onclick="addPortalTierRow('${p.id}')"
+                style="padding:4px 10px;font-size:11px;">+ Add break</button>
+            </div>
+            <div class="portal-tier-rows" data-product-id="${p.id}">${tiers.map(t => portalTierRowHtml(p.id, t)).join('')}</div>
           </div>
-        </div>
-        <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--gray-200);">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-            <label style="font-size:9.5px;font-weight:800;letter-spacing:.5px;
-              text-transform:uppercase;color:var(--gray-500);">Volume Pricing <span style="text-transform:none;font-weight:600;opacity:.7;">(optional, this client only)</span></label>
-            <button type="button" class="btn btn-sm btn-secondary" onclick="addPortalTierRow('${p.id}')"
-              style="padding:4px 10px;font-size:11px;">+ Add break</button>
-          </div>
-          <div class="portal-tier-rows" data-product-id="${p.id}">${tiers.map(t => portalTierRowHtml(p.id, t)).join('')}</div>
         </div>
       </div>`;
   }).join('');
@@ -759,157 +761,172 @@ function openClientPortalModal(clientId) {
   const hasLink = cfg.token && !cfg.revoked;
   const modeBtn = (mode, label) => `
     <button type="button" class="portal-mode-btn" data-mode="${mode}"
-      onclick="setPortalPricingMode('${mode}')"
-      style="padding:9px 16px;border-radius:99px;border:1.5px solid var(--border);
-        background:var(--white);color:var(--black);font-size:12.5px;font-weight:800;
-        font-family:inherit;cursor:pointer;white-space:nowrap;">${label}</button>`;
+      onclick="setPortalPricingMode('${mode}')">${label}</button>`;
   const termsBtn = (mode, label) => `
     <button type="button" class="portal-terms-btn" data-terms="${mode}"
-      onclick="setPortalTermsMode('${mode}')"
-      style="padding:9px 16px;border-radius:99px;border:1.5px solid var(--border);
-        background:var(--white);color:var(--black);font-size:12.5px;font-weight:800;
-        font-family:inherit;cursor:pointer;white-space:nowrap;">${label}</button>`;
+      onclick="setPortalTermsMode('${mode}')">${label}</button>`;
 
   m.innerHTML = `
-    <div class="modal" style="max-width:min(680px, 94vw);">
-      <h3 style="margin-bottom:2px;">Order Portal — ${escapeHtml(client.name)}</h3>
-      <div style="font-size:12px;color:var(--gray-400);margin-bottom:18px;">
-        Set this client's prices, pick their products, then share their private order link.
-      </div>
+    <div class="modal portal-modal">
 
-      <div style="font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;
-        color:var(--gray-500);margin-bottom:10px;">1 · Terms</div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-        ${termsBtn('sale', 'Standard Sale')}
-        ${termsBtn('consignment', 'Consignment')}
-      </div>
-      <div id="portalSettlementWrap" style="display:none;flex-wrap:wrap;gap:16px;margin-bottom:12px;">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:700;">
-          <input type="checkbox" id="portalSettlePayNow" ${cfg.settlementModes.payNow ? 'checked' : ''}
-            style="width:18px;height:18px;" /> Client can pay in-portal when reporting sales
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:700;">
-          <input type="checkbox" id="portalSettleInvoice" ${cfg.settlementModes.invoiceAfter ? 'checked' : ''}
-            style="width:18px;height:18px;" /> Bill after you reconcile their report
-        </label>
-      </div>
-      <div id="portalTermsHint" style="font-size:11px;color:var(--gray-400);margin-bottom:18px;">
-        Consignment: this client holds stock and only owes for what they report as sold. Damaged/expired units are written off, not billed.
-      </div>
-
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:700;margin-bottom:8px;">
-        <input type="checkbox" id="portalRushEnabled" ${cfg.rushFee.enabled ? 'checked' : ''}
-          onchange="updatePortalRushVisibility()" style="width:18px;height:18px;" />
-        Charge a rush fee for short-notice delivery requests
-      </label>
-      <div id="portalRushWrap" style="display:${cfg.rushFee.enabled ? 'flex' : 'none'};align-items:center;
-        gap:8px;flex-wrap:wrap;margin-bottom:18px;">
-        <span style="font-size:13px;font-weight:700;color:var(--gray-500);">Within</span>
-        <input type="number" step="1" min="0" id="portalRushHours" value="${cfg.rushFee.thresholdHrs}"
-          style="width:70px;padding:9px 10px;font-size:14px;font-weight:800;border:1.5px solid var(--border);
-            border-radius:8px;font-family:inherit;" />
-        <span style="font-size:13px;font-weight:700;color:var(--gray-500);">hours of the requested delivery date, add</span>
-        <input type="number" step="0.5" min="0" id="portalRushPercent" value="${cfg.rushFee.percent}"
-          style="width:70px;padding:9px 10px;font-size:14px;font-weight:800;border:1.5px solid var(--border);
-            border-radius:8px;font-family:inherit;" />
-        <span style="font-size:13px;font-weight:700;color:var(--gray-500);">% to the order total.</span>
-      </div>
-
-      <div style="font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;
-        color:var(--gray-500);margin-bottom:10px;">2 · General Pricing</div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-        ${modeBtn('retail', 'Standard retail')}
-        ${modeBtn('percent', 'Percent off')}
-        ${modeBtn('amount', 'Amount off')}
-      </div>
-      <div id="portalPercentWrap" style="display:none;align-items:center;gap:8px;margin-bottom:12px;">
-        <input type="number" step="0.1" id="portalPercentOff" value="${cfg.pricing.percentOff || ''}"
-          placeholder="10" oninput="updatePortalPricePreviews()"
-          style="width:90px;padding:9px 10px;font-size:14px;font-weight:800;border:1.5px solid var(--border);
-            border-radius:8px;font-family:inherit;" />
-        <span style="font-size:13px;font-weight:700;color:var(--gray-500);">% off every product's retail price</span>
-      </div>
-      <div id="portalAmountWrap" style="display:none;align-items:center;gap:8px;margin-bottom:12px;">
-        <span style="font-size:14px;font-weight:800;">${escapeHtml(sym)}</span>
-        <input type="number" step="0.01" id="portalAmountOff" value="${cfg.pricing.amountOff || ''}"
-          placeholder="15" oninput="updatePortalPricePreviews()"
-          style="width:90px;padding:9px 10px;font-size:14px;font-weight:800;border:1.5px solid var(--border);
-            border-radius:8px;font-family:inherit;" />
-        <span style="font-size:13px;font-weight:700;color:var(--gray-500);">off every product's retail price</span>
-      </div>
-      <div style="font-size:11px;color:var(--gray-400);margin-bottom:18px;">
-        A custom price set on a product below always overrides this.
-      </div>
-
-      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;">
-        <div style="font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;
-          color:var(--gray-500);">3 · Products <span id="portalIncludedCount" style="color:var(--gray-400);font-weight:600;letter-spacing:0;text-transform:none;"></span></div>
-        <div style="display:flex;gap:12px;">
-          <button type="button" onclick="togglePortalIncludeAll(true)" style="background:none;border:none;
-            padding:0;font-size:11.5px;font-weight:800;color:var(--black);cursor:pointer;
-            font-family:inherit;text-decoration:underline;">Select all</button>
-          <button type="button" onclick="togglePortalIncludeAll(false)" style="background:none;border:none;
-            padding:0;font-size:11.5px;font-weight:800;color:var(--gray-500);cursor:pointer;
-            font-family:inherit;text-decoration:underline;">Select none</button>
+      <div class="portal-head">
+        <h3>Order Portal &mdash; ${escapeHtml(client.name)}</h3>
+        <div class="portal-tabs" role="tablist">
+          <button type="button" class="portal-tab" role="tab" data-tab="setup"
+            aria-selected="true" onclick="setPortalTab('setup')">Terms &amp; Pricing</button>
+          <button type="button" class="portal-tab" role="tab" data-tab="products"
+            aria-selected="false" onclick="setPortalTab('products')">Products<span
+            class="portal-tab-count" id="portalTabCount"></span></button>
+          <button type="button" class="portal-tab" role="tab" data-tab="share"
+            aria-selected="false" onclick="setPortalTab('share')">Share</button>
         </div>
       </div>
 
-      <div style="max-height:min(48vh, 440px);overflow-y:auto;margin-bottom:18px;padding-right:2px;">
-        ${cards || `<div class="empty-state">No products yet</div>`}
-      </div>
+      <div class="portal-body">
 
-      <div style="font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;
-        color:var(--gray-500);margin-bottom:10px;">4 · Payment Methods</div>
-      <div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:18px;">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:700;">
-          <input type="checkbox" id="portalAcceptCash" ${cfg.builtinMethods.cash ? 'checked' : ''}
-            style="width:18px;height:18px;" /> Accept Cash
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:700;">
-          <input type="checkbox" id="portalAcceptInvoice" ${cfg.builtinMethods.invoice ? 'checked' : ''}
-            style="width:18px;height:18px;" /> Accept Invoice / On Account
-        </label>
-      </div>
-      <div style="font-size:11px;color:var(--gray-400);margin-top:-10px;margin-bottom:18px;">
-        Any QR/bank methods configured in Settings are always offered too. Uncheck both only if this client must pay another way you've set up in Settings.
-      </div>
+        <!-- ── Tab 1: Terms & Pricing ── -->
+        <div class="portal-panel active" data-tab="setup" role="tabpanel">
 
-      <div style="font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;
-        color:var(--gray-500);margin-bottom:10px;">5 · Share Link</div>
-      <div id="portalShareSection" style="display:${hasLink ? 'block' : 'none'};background:var(--gray-50);
-        border:1.5px solid var(--border);border-radius:var(--radius-lg);
-        padding:12px 14px;margin-bottom:14px;">
-        <div style="font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;
-          color:var(--gray-500);margin-bottom:8px;">Private Order Link</div>
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-          <input id="portalLinkInput" type="text" readonly value="${hasLink ? escapeHtml(_portalLink(cfg.token)) : ''}"
-            style="flex:1;padding:8px 10px;font-size:11px;border:1.5px solid var(--border);
-              border-radius:8px;font-family:var(--font-mono, monospace);background:var(--white);" />
-          <button class="btn btn-sm btn-secondary" data-action="portal-copy-link">Copy</button>
+          <div class="portal-group">
+            <span class="portal-label">Terms</span>
+            <div class="portal-seg">
+              ${termsBtn('sale', 'Standard Sale')}
+              ${termsBtn('consignment', 'Consignment')}
+            </div>
+            <div id="portalSettlementWrap" class="portal-checks" style="display:none;margin-top:12px;">
+              <label class="portal-check">
+                <input type="checkbox" id="portalSettlePayNow" ${cfg.settlementModes.payNow ? 'checked' : ''} />
+                They can pay in-portal when reporting sales
+              </label>
+              <label class="portal-check">
+                <input type="checkbox" id="portalSettleInvoice" ${cfg.settlementModes.invoiceAfter ? 'checked' : ''} />
+                Bill after you reconcile
+              </label>
+            </div>
+            <div id="portalTermsHint" class="portal-hint">
+              They hold your stock and pay only for what sells.
+            </div>
+          </div>
+
+          <div class="portal-group">
+            <label class="portal-check">
+              <input type="checkbox" id="portalRushEnabled" ${cfg.rushFee.enabled ? 'checked' : ''}
+                onchange="updatePortalRushVisibility()" />
+              Rush fee for short-notice orders
+            </label>
+            <div id="portalRushWrap" class="portal-fields"
+              style="display:${cfg.rushFee.enabled ? 'flex' : 'none'};margin-top:12px;">
+              <label class="portal-field">
+                <span>Notice window</span>
+                <div class="portal-field-row">
+                  <input type="number" step="1" min="0" id="portalRushHours" value="${cfg.rushFee.thresholdHrs}" />
+                  <span class="portal-field-suffix">hrs</span>
+                </div>
+              </label>
+              <label class="portal-field">
+                <span>Surcharge</span>
+                <div class="portal-field-row">
+                  <input type="number" step="0.5" min="0" id="portalRushPercent" value="${cfg.rushFee.percent}" />
+                  <span class="portal-field-suffix">%</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="portal-group">
+            <span class="portal-label">Pricing</span>
+            <div class="portal-seg">
+              ${modeBtn('retail', 'Standard retail')}
+              ${modeBtn('percent', 'Percent off')}
+              ${modeBtn('amount', 'Amount off')}
+            </div>
+            <div id="portalPercentWrap" class="portal-fields" style="display:none;margin-top:12px;">
+              <label class="portal-field">
+                <span>Discount off retail</span>
+                <div class="portal-field-row">
+                  <input type="number" step="0.1" id="portalPercentOff" value="${cfg.pricing.percentOff || ''}"
+                    placeholder="10" oninput="updatePortalPricePreviews()" />
+                  <span class="portal-field-suffix">%</span>
+                </div>
+              </label>
+            </div>
+            <div id="portalAmountWrap" class="portal-fields" style="display:none;margin-top:12px;">
+              <label class="portal-field">
+                <span>Amount off retail</span>
+                <div class="portal-field-row">
+                  <span class="portal-field-suffix">${escapeHtml(sym)}</span>
+                  <input type="number" step="0.01" id="portalAmountOff" value="${cfg.pricing.amountOff || ''}"
+                    placeholder="15" oninput="updatePortalPricePreviews()" />
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="portal-group">
+            <span class="portal-label">Payment methods</span>
+            <div class="portal-checks">
+              <label class="portal-check">
+                <input type="checkbox" id="portalAcceptCash" ${cfg.builtinMethods.cash ? 'checked' : ''} />
+                Cash
+              </label>
+              <label class="portal-check">
+                <input type="checkbox" id="portalAcceptInvoice" ${cfg.builtinMethods.invoice ? 'checked' : ''} />
+                Invoice / On account
+              </label>
+            </div>
+            <div class="portal-hint">Your QR and bank methods from Settings are always offered.</div>
+          </div>
+
         </div>
-        <div style="display:flex;gap:14px;align-items:center;">
-          <div id="portalQrBox" style="width:110px;height:110px;flex-shrink:0;border:1.5px solid var(--border);
-            border-radius:10px;overflow:hidden;background:#fff;display:grid;place-items:center;"></div>
-          <div style="font-size:11px;color:var(--gray-500);line-height:1.6;">
-            Send this link (or let them scan the QR).<br>
-            Sharing again after price changes refreshes their form.<br>
-            <button data-action="portal-revoke" style="background:none;border:none;padding:0;margin-top:4px;
-              font-size:11px;font-weight:800;color:var(--danger);cursor:pointer;font-family:inherit;
-              text-decoration:underline;">Revoke this link</button>
+
+        <!-- ── Tab 2: Products ── -->
+        <div class="portal-panel" data-tab="products" role="tabpanel">
+          <div class="portal-products-head">
+            <span class="portal-label" style="margin-bottom:0;" id="portalIncludedCount"></span>
+            <div style="display:flex;gap:14px;">
+              <button type="button" class="portal-linkbtn" onclick="togglePortalIncludeAll(true)">Select all</button>
+              <button type="button" class="portal-linkbtn muted" onclick="togglePortalIncludeAll(false)">Select none</button>
+            </div>
+          </div>
+          ${cards || `<div class="empty-state">No products yet</div>`}
+        </div>
+
+        <!-- ── Tab 3: Share ── -->
+        <div class="portal-panel" data-tab="share" role="tabpanel">
+          <div id="portalShareEmpty" style="display:${hasLink ? 'none' : 'block'};">
+            <div class="empty-state">No link yet. Use Save &amp; Get Link below.</div>
+          </div>
+          <div id="portalShareSection" class="portal-share-box" style="display:${hasLink ? 'block' : 'none'};">
+            <span class="portal-label">Private order link</span>
+            <div class="portal-share-row">
+              <input id="portalLinkInput" type="text" readonly value="${hasLink ? escapeHtml(_portalLink(cfg.token)) : ''}" />
+              <button class="btn btn-sm btn-secondary" data-action="portal-copy-link">Copy</button>
+            </div>
+            <div class="portal-share-grid">
+              <div id="portalQrBox" class="portal-qr"></div>
+              <div class="portal-share-note">
+                Send the link, or let them scan the code.<br>
+                Re-sharing after a price change refreshes their form.
+                <br><button class="portal-revoke" data-action="portal-revoke">Revoke this link</button>
+              </div>
+            </div>
           </div>
         </div>
+
       </div>
 
-      <div class="modal-actions">
+      <div class="portal-foot">
         <button class="btn btn-secondary" type="button" onclick="closeModal('clientPortalModal')">Close</button>
         <button class="btn btn-secondary" type="button" data-action="portal-save">Save</button>
         <button class="btn" type="button" data-action="portal-share" id="portalShareBtn">
-          ${hasLink ? 'Update & Re-share Link' : 'Save & Get Link'}
+          ${hasLink ? 'Update &amp; Re-share Link' : 'Save &amp; Get Link'}
         </button>
       </div>
+
     </div>`;
 
   openModal('clientPortalModal');
+  setPortalTab('setup');
   setPortalPricingMode(cfg.pricing.mode);
   setPortalTermsMode(cfg.termsMode);
   if (hasLink) _renderPortalQR(cfg.token);
@@ -920,13 +937,13 @@ function setPortalTermsMode(mode) {
   if (!modal) return;
   modal.dataset.termsMode = mode;
   modal.querySelectorAll('.portal-terms-btn').forEach(btn => {
-    const active = btn.dataset.terms === mode;
-    btn.style.background  = active ? 'var(--black)' : 'var(--white)';
-    btn.style.color       = active ? '#fff' : 'var(--black)';
-    btn.style.borderColor = active ? 'var(--black)' : 'var(--border)';
+    btn.classList.toggle('active', btn.dataset.terms === mode);
   });
   const wrap = document.getElementById('portalSettlementWrap');
   if (wrap) wrap.style.display = mode === 'consignment' ? 'flex' : 'none';
+  // The consignment explainer only makes sense on consignment terms.
+  const hint = document.getElementById('portalTermsHint');
+  if (hint) hint.style.display = mode === 'consignment' ? 'block' : 'none';
 }
 
 function updatePortalRushVisibility() {
@@ -940,10 +957,7 @@ function setPortalPricingMode(mode) {
   if (!modal) return;
   modal.dataset.pricingMode = mode;
   modal.querySelectorAll('.portal-mode-btn').forEach(btn => {
-    const active = btn.dataset.mode === mode;
-    btn.style.background    = active ? 'var(--black)' : 'var(--white)';
-    btn.style.color         = active ? '#fff' : 'var(--black)';
-    btn.style.borderColor   = active ? 'var(--black)' : 'var(--border)';
+    btn.classList.toggle('active', btn.dataset.mode === mode);
   });
   const percentWrap = document.getElementById('portalPercentWrap');
   const amountWrap  = document.getElementById('portalAmountWrap');
@@ -1068,19 +1082,14 @@ function updatePortalPricePreviews() {
   modal.querySelectorAll('.portal-card[data-portal-product]').forEach(card => {
     const product  = products.find(p => String(p.id) === String(card.dataset.portalProduct));
     const cell     = card.querySelector('.portal-preview');
-    const detail   = card.querySelector('.portal-card-detail');
     const included = card.querySelector('.portal-include')?.checked;
     if (!product || !cell) return;
 
-    if (!included) {
-      cell.innerHTML = `<span style="color:var(--gray-300);">not offered</span>`;
-      card.style.opacity = '.5';
-      if (detail) detail.style.display = 'none';
-      return;
-    }
+    // Offered state drives the card's class only. The detail block is hidden
+    // by CSS, never unrendered, so its values survive toggling and save.
+    card.classList.toggle('is-offered', !!included);
+    if (!included) { cell.textContent = ''; return; }
     includedCount++;
-    card.style.opacity = '1';
-    if (detail) detail.style.display = 'flex';
 
     const price  = resolvePortalPrice(cfg, product);
     const retail = round2(Number(product.price || 0));
@@ -1095,7 +1104,32 @@ function updatePortalPricePreviews() {
   });
 
   const countEl = document.getElementById('portalIncludedCount');
-  if (countEl) countEl.textContent = `(${includedCount} of ${products.length} offered)`;
+  if (countEl) countEl.textContent = `${includedCount} of ${products.length} offered`;
+  const tabCount = document.getElementById('portalTabCount');
+  if (tabCount) tabCount.textContent = includedCount;
+}
+
+/* Include checkbox: reveal or collapse this product's pricing fields.
+   Toggles a class only — the fields stay in the DOM so their values are
+   still there for _readPortalModalConfig() at save time. */
+function onPortalIncludeToggle(input) {
+  input.closest('.portal-card')?.classList.toggle('is-offered', input.checked);
+  updatePortalPricePreviews();
+}
+
+/* Tab switching. All panels stay mounted; only `active` moves. */
+function setPortalTab(tab) {
+  const modal = document.getElementById('clientPortalModal');
+  if (!modal) return;
+  modal.dataset.portalTab = tab;
+  modal.querySelectorAll('.portal-tab').forEach(btn => {
+    btn.setAttribute('aria-selected', String(btn.dataset.tab === tab));
+  });
+  modal.querySelectorAll('.portal-panel').forEach(panel => {
+    panel.classList.toggle('active', panel.dataset.tab === tab);
+  });
+  const body = modal.querySelector('.portal-body');
+  if (body) body.scrollTop = 0;
 }
 
 function saveClientPortalConfig(silent = false) {
@@ -1146,9 +1180,13 @@ async function shareClientPortal() {
 
     const linkInput = document.getElementById('portalLinkInput');
     const section   = document.getElementById('portalShareSection');
+    const empty     = document.getElementById('portalShareEmpty');
     if (linkInput) linkInput.value = _portalLink(token);
     if (section)   section.style.display = 'block';
+    if (empty)     empty.style.display   = 'none';
     _renderPortalQR(token);
+    // Publishing is the one moment the link is the thing you want, so land there.
+    setPortalTab('share');
     showNotification('Order portal published — link is ready to share', 'success');
   } finally {
     if (btn) { btn.textContent = 'Update & Re-share Link'; btn.disabled = false; }
@@ -1294,6 +1332,8 @@ async function revokeClientPortal() {
 
   const section = document.getElementById('portalShareSection');
   if (section) section.style.display = 'none';
+  const empty = document.getElementById('portalShareEmpty');
+  if (empty) empty.style.display = 'block';
   const btn = document.getElementById('portalShareBtn');
   if (btn) btn.textContent = 'Save & Get Link';
 
@@ -1747,13 +1787,15 @@ async function openConsignmentLedger(clientId) {
   }
   m.innerHTML = `
     <div class="modal" style="max-width:min(560px, 94vw);">
-      <h3 style="margin-bottom:2px;">Consignment Ledger — ${escapeHtml(client.name)}</h3>
-      <div style="font-size:12px;color:var(--gray-400);margin-bottom:18px;">
-        Current stock on hand and recent reconciled sell-through.
+      <h3 style="margin-bottom:2px;">Consignment Stock — ${escapeHtml(client.name)}</h3>
+      <div style="font-size:12px;color:var(--gray-400);margin-bottom:16px;">
+        Your stock currently held at this client's location, and what has
+        sold through so far.
       </div>
-      <div class="section-title" style="margin-top:0;">On Hand</div>
+      <div id="ledgerTotals" style="margin-bottom:18px;"></div>
+      <div class="section-title" style="margin-top:0;">On Hand Now</div>
       <div id="ledgerOnHand" style="margin-bottom:20px;">Loading…</div>
-      <div class="section-title" style="margin-top:0;">Recent Reports</div>
+      <div class="section-title" style="margin-top:0;">Reconciled Sell-Through</div>
       <div id="ledgerHistory">Loading…</div>
       <div class="modal-actions">
         <button class="btn btn-secondary" type="button" onclick="closeModal('consignmentLedgerModal')">Close</button>
@@ -1772,6 +1814,28 @@ async function openConsignmentLedger(clientId) {
   ]);
 
   const stock = (stockRes.ok && Array.isArray(stockRes.data)) ? stockRes.data : [];
+
+  // Headline totals — what's out there, and what it's worth. Derived from the
+  // same rows listed below, so the two can never disagree.
+  const totalsEl = document.getElementById('ledgerTotals');
+  if (totalsEl) {
+    const totalUnits = stock.reduce((s, r) => s + Number(r.on_hand || 0), 0);
+    const totalValue = stock.reduce((s, r) =>
+      s + Number(r.on_hand || 0) * Number(r.unit_price || 0), 0);
+    const figure = (label, value) => `
+      <div style="flex:1;">
+        <div style="font-size:9px;font-weight:800;letter-spacing:1px;
+          text-transform:uppercase;color:var(--gray-400);margin-bottom:4px;">${label}</div>
+        <div style="font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;">${value}</div>
+      </div>`;
+    totalsEl.innerHTML = `
+      <div style="display:flex;gap:16px;padding:12px 14px;
+        border:1.5px solid var(--border);border-radius:var(--radius-lg);">
+        ${figure('Units on hand', totalUnits)}
+        ${figure('Value on hand', formatCurrency(totalValue))}
+      </div>`;
+  }
+
   const onHandEl = document.getElementById('ledgerOnHand');
   if (onHandEl) {
     onHandEl.innerHTML = stock.length
@@ -3144,10 +3208,11 @@ function renderSupplyTable() {
               data-id="${order.id}">Set Status</button>
             ${canAdvance && !order.salesRecordId
               ? `<button class="btn btn-sm btn-secondary" data-action="open-supply-checkout"
-                  data-id="${order.id}">Checkout</button>` : ''}
+                  data-id="${order.id}">Checkout</button>`
+              : `<span aria-hidden="true"></span>`}
             <div class="row-menu">
               <button type="button" class="row-menu-btn" data-action="toggle-supply-row-menu"
-                data-id="${order.id}" aria-label="More actions">⋯</button>
+                data-menu-scope="order" data-id="${order.id}" aria-label="More actions">⋯</button>
               <template class="row-menu-template">
                 <div class="row-menu-dropdown">
                   <button type="button" data-action="edit-supply-order"
@@ -3180,13 +3245,16 @@ function renderSupplyTable() {
    Appended to <body> and positioned with position:fixed via getBoundingClientRect —
    the table's overflow-x:auto scroll container clips overflow-y too (a CSS quirk),
    so a dropdown nested inside the row would be invisibly clipped. */
-function toggleSupplyRowMenu(orderId) {
-  const wasOpen = document.querySelector(`.row-menu-btn[data-id="${orderId}"]`)?.dataset.menuOpen === 'true';
+function toggleSupplyRowMenu(rowId, scope = 'order') {
+  // Scoped by list — the orders table and the clients list both render
+  // .row-menu-btn, so a bare [data-id] lookup could match the wrong row.
+  const sel = `.row-menu-btn[data-menu-scope="${scope}"][data-id="${rowId}"]`;
+  const wasOpen = document.querySelector(sel)?.dataset.menuOpen === 'true';
   document.querySelectorAll('.row-menu-dropdown').forEach(el => el.remove());
   document.querySelectorAll('.row-menu-btn').forEach(b => b.dataset.menuOpen = 'false');
   if (wasOpen) return;
 
-  const btn = document.querySelector(`.row-menu-btn[data-id="${orderId}"]`);
+  const btn = document.querySelector(sel);
   const template = btn?.parentElement.querySelector('.row-menu-template');
   if (!btn || !template) return;
 
@@ -3471,6 +3539,8 @@ window.updatePortalInboxBadge         = updatePortalInboxBadge;
 window.updatePortalPricePreviews      = updatePortalPricePreviews;
 window.togglePortalIncludeAll         = togglePortalIncludeAll;
 window.setPortalPricingMode           = setPortalPricingMode;
+window.setPortalTab                   = setPortalTab;
+window.onPortalIncludeToggle          = onPortalIncludeToggle;
 window.saveClientPortalConfig         = saveClientPortalConfig;
 window.shareClientPortal              = shareClientPortal;
 window.revokeClientPortal             = revokeClientPortal;

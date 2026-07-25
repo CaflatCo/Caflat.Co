@@ -605,7 +605,8 @@ function bindDelegatedActions() {
       case 'open-status-picker':       openStatusPickerModal(actionEl.dataset.id || ''); break;
       case 'set-supply-status':        setSupplyStatus(actionEl.dataset.orderId || '', actionEl.dataset.status || ''); break;
       case 'cancel-supply-order':    cancelSupplyOrder(actionEl.dataset.id || ''); break;
-      case 'toggle-supply-row-menu': if(typeof toggleSupplyRowMenu==='function') toggleSupplyRowMenu(actionEl.dataset.id || ''); break;
+      case 'toggle-supply-row-menu': if(typeof toggleSupplyRowMenu==='function') toggleSupplyRowMenu(actionEl.dataset.id || '', 'order'); break;
+      case 'toggle-client-row-menu': if(typeof toggleSupplyRowMenu==='function') toggleSupplyRowMenu(actionEl.dataset.id || '', 'client'); break;
       case 'push-to-production':     if(typeof pushSupplyOrderToProduction==='function') pushSupplyOrderToProduction(actionEl.dataset.id || ''); break;
       case 'view-production-job':    if(typeof viewSupplyOrderProductionJob==='function') viewSupplyOrderProductionJob(actionEl.dataset.id || ''); break;
       case 'confirm-supply-checkout': if(typeof confirmSupplyCheckout==='function') confirmSupplyCheckout(actionEl.dataset.id || ''); break;
