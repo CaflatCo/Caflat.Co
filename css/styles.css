@@ -1038,6 +1038,11 @@ tbody tr:hover td { background: var(--gray-50); }
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+  /* Bottom-align the cells so the inputs share a baseline even when one
+     column's label wraps to two lines and the other's doesn't. Grid items
+     stretch from the top by default, which pushed the taller-labelled
+     column's input down. No effect when the labels are the same height. */
+  align-items: end;
 }
 
 /* ═══ MODALS ═══ */
