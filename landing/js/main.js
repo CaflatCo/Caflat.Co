@@ -284,6 +284,7 @@ document.querySelectorAll('[data-target]').forEach(el => statsObserver.observe(e
   let activeIndex = tabs.findIndex(t => t.getAttribute('aria-selected') === 'true');
   if (activeIndex < 0) activeIndex = 0;
   let switching = false;
+  let switchToken = 0;
 
   const moveUnderline = (tab) => {
     if (!underline) return;
@@ -293,6 +294,25 @@ document.querySelectorAll('[data-target]').forEach(el => statsObserver.observe(e
   // Initial placement (post-layout)
   requestAnimationFrame(() => moveUnderline(tabs[activeIndex]));
   window.addEventListener('resize', () => moveUnderline(tabs[activeIndex]), { passive: true });
+
+  const EXIT_MS = 200, ENTER_MS = 420;
+
+  /* Return a panel to its resting state: fully opaque, untransformed, with
+     no animation still holding it.
+
+     Cancelling matters more than clearing the inline styles. The exit
+     animation below runs with fill:forwards so the panel holds at opacity 0
+     until it is hidden, and a finished forwards animation keeps applying its
+     end value indefinitely. The enter animation has no fill, so it never
+     qualifies to replace the exit one; it plays, looks right, and the instant
+     it ends its effect drops and the old exit animation reasserts opacity 0.
+     That left a full-height panel with nothing visible in it, which is why
+     the section only went dark on a tab the visitor came back to. */
+  const rest = (panel) => {
+    panel.getAnimations().forEach(a => a.cancel());
+    panel.style.opacity = '';
+    panel.style.transform = '';
+  };
 
   function switchMode(newIndex, { focusTab = false } = {}) {
     if (newIndex === activeIndex || switching || newIndex < 0 || newIndex >= panels.length) return;
@@ -309,11 +329,18 @@ document.querySelectorAll('[data-target]').forEach(el => statsObserver.observe(e
     if (reduce) {
       oldPanel.hidden = true;
       newPanel.hidden = false;
+      rest(newPanel);
       requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
       return;
     }
 
     switching = true;
+    // Every stage below is driven by an animation callback with a timer as
+    // backstop, since onfinish is not guaranteed to arrive (a tab
+    // backgrounded mid-transition can withhold it). This token makes the
+    // stale backstop of a superseded transition a no-op instead of letting
+    // it clobber the transition that replaced it.
+    const token = ++switchToken;
     const oldH = stage.offsetHeight;
 
     // Measure the incoming panel's natural height without showing it yet
@@ -329,33 +356,44 @@ document.querySelectorAll('[data-target]').forEach(el => statsObserver.observe(e
 
     stage.animate(
       [{ height: oldH + 'px' }, { height: newH + 'px' }],
-      { duration: 420, easing: HOUSE_EASE }
+      { duration: ENTER_MS, easing: HOUSE_EASE }
     );
 
     const exitAnim = oldPanel.animate(
       [{ opacity: 1, transform: 'translateX(0)' }, { opacity: 0, transform: `translateX(${-24 * dir}px)` }],
-      { duration: 200, easing: EXIT_EASE, fill: 'forwards' }
+      { duration: EXIT_MS, easing: EXIT_EASE, fill: 'forwards' }
     );
 
-    exitAnim.onfinish = () => {
+    const settle = () => {
+      if (token !== switchToken) return;
+      rest(newPanel);
+      stage.style.height = '';
+      stage.style.overflow = '';
+      switching = false;
+    };
+
+    let swapped = false;
+    const swap = () => {
+      if (token !== switchToken || swapped) return;
+      swapped = true;
       oldPanel.hidden = true;
-      oldPanel.style.opacity = '';
-      oldPanel.style.transform = '';
+      rest(oldPanel);   // drop the forwards-filled exit animation
       newPanel.hidden = false;
+      rest(newPanel);   // and any exit animation left over from last time
       window.dispatchEvent(new Event('resize')); // sliders in the newly-shown panel recompute width
 
       const enterAnim = newPanel.animate(
         [{ opacity: 0, transform: `translateX(${24 * dir}px)` }, { opacity: 1, transform: 'translateX(0)' }],
-        { duration: 420, easing: HOUSE_EASE }
+        { duration: ENTER_MS, easing: HOUSE_EASE }
       );
-      enterAnim.onfinish = () => {
-        newPanel.style.opacity = '';
-        newPanel.style.transform = '';
-        stage.style.height = '';
-        stage.style.overflow = '';
-        switching = false;
-      };
+      enterAnim.onfinish = settle;
+      enterAnim.oncancel = settle;
+      setTimeout(settle, ENTER_MS + 150);
     };
+
+    exitAnim.onfinish = swap;
+    exitAnim.oncancel = swap;
+    setTimeout(swap, EXIT_MS + 150);
   }
 
   tabs.forEach((tab, i) => {
