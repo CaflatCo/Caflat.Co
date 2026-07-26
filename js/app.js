@@ -172,12 +172,17 @@ function bindSearchFilters() {
   });
 }
 
+/* Delegated on document, not attached per-overlay: most .modal-overlay
+   elements (Order Portal, Origin, Treasury, coffeecart, etc.) are built by
+   document.createElement() the first time their modal opens, long after
+   this function's one-time querySelectorAll() ran at startup — so a
+   per-element listener never reached them and tapping outside did nothing.
+   Delegation covers every overlay that exists now or gets created later. */
 function bindModalClose() {
-  document.querySelectorAll('.modal-overlay').forEach(overlay => {
-    overlay.addEventListener('click', event => {
-      if (event.target !== overlay) return;
-      closeModal(overlay.id);
-    });
+  document.addEventListener('click', event => {
+    if (!event.target.classList.contains('modal-overlay')) return;
+    if (!event.target.classList.contains('active')) return;
+    closeModal(event.target.id);
   });
 }
 
