@@ -41,6 +41,14 @@ body {
 }
 button { font-family: inherit; cursor: pointer; border: none; background: none; }
 input, textarea { font-family: inherit; }
+/* Repeat-tapping a control (spamming a stepper's + or −) reads as
+   double-tap-to-zoom in mobile Safari and Chrome, which zooms the page
+   out from under the order. `manipulation` keeps scrolling and pinch-zoom
+   but drops the double-tap gesture on anything meant to be tapped twice.
+   The stepper wrappers are listed too so the gaps between their buttons
+   are covered, not just the buttons themselves. */
+button, a, label, input, select, textarea,
+.stepper, .cart-step { touch-action: manipulation; }
 .mono { font-family: 'DM Mono', ui-monospace, monospace; }
 
 /* ── Screens ── */
