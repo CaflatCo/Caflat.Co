@@ -1176,15 +1176,25 @@ function _breakEvenBarHtml() {
 function _paintBreakEvenBar(host, be) {
   const track = host?.querySelector('.be-track');
   if (!track) return;
+
+  // Stash the target on the node rather than closing over it. The first
+  // paint is deferred a frame, and a closure would replay whatever values
+  // it captured, undoing any newer update that landed in the meantime.
+  track.dataset.pct      = be.pct.toFixed(1);
+  track.dataset.overflow = be.overflowPct.toFixed(1);
+  track.dataset.reached  = String(be.reached);
+
   const apply = () => {
-    track.classList.toggle('is-profit', be.reached);
+    track.classList.toggle('is-profit', track.dataset.reached === 'true');
     const fill = track.querySelector('.be-fill');
     const over = track.querySelector('.be-overflow');
-    if (fill) fill.style.width = `${be.pct.toFixed(1)}%`;
-    if (over) over.style.width = `${be.overflowPct.toFixed(1)}%`;
+    if (fill) fill.style.width = `${track.dataset.pct}%`;
+    if (over) over.style.width = `${track.dataset.overflow}%`;
   };
+
   if (track.dataset.painted === 'true') { apply(); return; }
-  // First paint: let the zero-width state land, then transition from it.
+  // First paint: let the zero-width state land so there is something to
+  // transition from, then move to the real width.
   track.dataset.painted = 'true';
   requestAnimationFrame(() => requestAnimationFrame(apply));
 }
