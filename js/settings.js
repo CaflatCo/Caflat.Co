@@ -857,6 +857,10 @@ function applyShoppingListToggle() {
   const panel   = document.getElementById('shoppingWidgetPanel');
 
   if (fab) fab.style.display = enabled ? 'flex' : 'none';
+  // Reserves bottom clearance in scrollable panels (see .has-shopping-fab
+  // .panel in styles.css) so the fixed FAB can't sit on top of a table's
+  // last row and block its action buttons — only while it's actually shown.
+  document.body.classList.toggle('has-shopping-fab', enabled);
 
   // If disabled while modal is open, close it
   if (!enabled && panel && panel.classList.contains('active')) {
