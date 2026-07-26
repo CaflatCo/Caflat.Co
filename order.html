@@ -224,7 +224,8 @@ button, a, label, input, select, textarea,
 .rep-field { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .rep-field label { font-size: 9px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase;
   color: var(--gray-400); }
-.rep-field input { width: 56px; height: 38px; text-align: center; font-size: 15px; font-weight: 900;
+/* 16px for the same reason as .f-input — under 16px, iOS zooms on focus. */
+.rep-field input { width: 56px; height: 38px; text-align: center; font-size: 16px; font-weight: 900;
   border: 1.5px solid var(--gray-200); border-radius: 10px; background: var(--white); color: var(--black);
   outline: none; transition: border-color .2s; }
 .rep-field input:focus { border-color: var(--black); }
@@ -376,7 +377,9 @@ button, a, label, input, select, textarea,
   color: var(--gray-400); margin: 16px 0 7px; }
 .f-input, .f-area {
   width: 100%; border: 1.5px solid var(--gray-200); border-radius: var(--radius-sm);
-  padding: 12px 14px; font-size: 15px; font-weight: 600; background: var(--white);
+  /* 16px, not 15px: iOS Safari auto-zooms on focus for any field under
+     16px, which jolts the page when you tap into the date or notes. */
+  padding: 12px 14px; font-size: 16px; font-weight: 600; background: var(--white);
   color: var(--black); outline: none; transition: border-color .2s;
 }
 .f-input:focus, .f-area:focus { border-color: var(--black); }
