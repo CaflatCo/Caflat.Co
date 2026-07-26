@@ -736,6 +736,23 @@ main {
   overflow-y: auto;
 }
 
+/* The shopping list widget is a position:fixed circle in the bottom-right
+   corner (52px, 24px from each edge — see #shoppingWidgetFab in index.html).
+   Being fixed, it sits on top of whatever a panel has scrolled to, so
+   without this ANY row can end up right behind it with its rightmost
+   action buttons (e.g. Sales History's Void/Refund) covered and untappable
+   at whatever scroll position happens to line the row up with it. This is
+   not limited to the last row of a table: Sales' panel, for instance, has
+   the Audit Log and Integrity Report sections below the sales table in the
+   same scroll container, so padding at the scrollable end of the panel
+   (tried first) never reaches the sales rows at all. Instead this shrinks
+   .view's own content-box height, which every .panel stretches to fill —
+   so the FAB's whole footprint sits below every view's visible viewport,
+   and nothing scrolled inside it can ever reach that corner, regardless of
+   scroll position. Reserves clearance only while the widget is actually
+   shown; applyShoppingListToggle() in settings.js keeps this class in sync. */
+body.has-shopping-fab .view { padding-bottom: 92px; }
+
 .panel-header {
   display: flex;
   justify-content: space-between;
