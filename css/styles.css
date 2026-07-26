@@ -3350,3 +3350,109 @@ html[data-theme="dark"] .cl-filter-bar select { background: var(--gray-100); col
   .portal-panel.active,
   .portal-card.is-offered .portal-card-detail { animation: none; }
 }
+
+/* ═══════════════════════════════════════════════════════
+   EVENT BREAK-EVEN
+   Bar fills to break-even, then an overflow segment carries the profit,
+   so it keeps saying something once the target is passed instead of
+   pinning at 100%.
+═══════════════════════════════════════════════════════ */
+.be-panel {
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  background: var(--white);
+}
+.be-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.be-eyebrow {
+  font-size: 9px; font-weight: 800; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--gray-400); margin-bottom: 3px;
+}
+.be-event { font-size: 15px; font-weight: 900; }
+.be-headline { font-size: 13px; font-weight: 700; color: var(--gray-500); text-align: right; }
+.be-headline b { font-size: 18px; font-weight: 900; color: var(--black); display: block; }
+.be-headline.is-profit b { color: #16a34a; }
+
+.be-track {
+  position: relative;
+  display: flex;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--gray-100);
+  overflow: hidden;
+}
+.be-fill {
+  height: 100%;
+  /* Green throughout. A softer tone while costs are still being covered,
+     deepening once they are, so the crossing still reads without the bar
+     changing colour family. */
+  background: #5cb98a;
+  border-radius: 999px 0 0 999px;
+  transition: width 420ms cubic-bezier(.22,.61,.36,1),
+              background 320ms cubic-bezier(.22,.61,.36,1);
+}
+.be-track.is-profit .be-fill { background: #16a34a; }
+.be-overflow {
+  height: 100%;
+  background: repeating-linear-gradient(
+    45deg, #16a34a, #16a34a 5px, #3fce85 5px, #3fce85 10px);
+  transition: width 420ms cubic-bezier(.22,.61,.36,1);
+}
+.be-track.is-profit { animation: bePulse 620ms ease-out 1; }
+@keyframes bePulse {
+  0%   { box-shadow: 0 0 0 0 rgba(22,163,74,.45); }
+  100% { box-shadow: 0 0 0 8px rgba(22,163,74,0); }
+}
+
+.be-stats {
+  display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 12px;
+}
+.be-stat { font-size: 11px; }
+.be-stat span {
+  display: block; font-weight: 800; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--gray-400); margin-bottom: 2px;
+}
+.be-stat b { font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.be-empty { font-size: 12.5px; color: var(--gray-500); line-height: 1.6; }
+.be-nudge {
+  margin-top: 12px; padding: 10px 12px;
+  border: 1.5px solid var(--warning-border, #fde68a);
+  background: var(--warning-bg, #fffbeb);
+  border-radius: var(--radius-md);
+  font-size: 11.5px; line-height: 1.5; color: #92400e;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+html[data-theme="dark"] .be-nudge { background: rgba(234,179,8,.12); color: #fcd34d; }
+
+/* ── Slim POS variant ── */
+.be-slim {
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--white);
+}
+.be-slim-top {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; margin-bottom: 8px;
+}
+.be-slim-name {
+  font-size: 11px; font-weight: 800; letter-spacing: .5px;
+  text-transform: uppercase; color: var(--gray-500);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.be-slim-num {
+  font-size: 13px; font-weight: 900; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.be-slim-num.is-profit { color: #16a34a; }
+.be-slim .be-track { height: 8px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .be-fill, .be-overflow { transition: none; }
+  .be-track.is-profit { animation: none; }
+}

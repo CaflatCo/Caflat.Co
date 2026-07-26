@@ -115,6 +115,7 @@ async function confirmRefund() {
 
   closeModal('refundModal');
   if (typeof renderSalesTable === 'function') renderSalesTable();
+  if (typeof refreshEventBreakEven === 'function') refreshEventBreakEven();
   if (typeof renderAuditLog   === 'function') renderAuditLog();
   if (typeof refreshDashboard === 'function') refreshDashboard();
   showNotification(`Refund processed for ${sale.receiptNumber} — stock restored`, 'success');
