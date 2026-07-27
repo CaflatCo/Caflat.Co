@@ -621,6 +621,7 @@ function bindDelegatedActions() {
       case 'edit-client':            openClientModal(actionEl.dataset.id || ''); break;
       case 'delete-client':          deleteSupplierClient(actionEl.dataset.id || ''); break;
       case 'client-portal':          if(typeof openClientPortalModal==='function') openClientPortalModal(actionEl.dataset.id || ''); break;
+      case 'client-contract':       if(typeof printClientContract==='function') printClientContract(actionEl.dataset.id || ''); break;
       case 'client-statement':       if(typeof openClientStatementModal==='function') openClientStatementModal(actionEl.dataset.id || ''); break;
       case 'stmt-share':             if(typeof shareClientStatement==='function') shareClientStatement(actionEl.dataset.id || document.getElementById('stmtClientId')?.value || ''); break;
       case 'stmt-revoke':            if(typeof revokeClientStatementLink==='function') revokeClientStatementLink(actionEl.dataset.id || document.getElementById('stmtClientId')?.value || ''); break;
