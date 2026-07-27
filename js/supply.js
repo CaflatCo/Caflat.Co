@@ -3262,8 +3262,15 @@ function toggleSupplyRowMenu(rowId, scope = 'order') {
   document.body.appendChild(dropdown);
   dropdown.classList.add('open');
 
+  // Opens below the button by default, but a row near the bottom of a long,
+  // scrolled list has no room there — flip upward instead of letting the
+  // dropdown's lower entries render past the viewport edge and become
+  // unreachable.
   const rect = btn.getBoundingClientRect();
-  dropdown.style.top  = `${rect.bottom + 4}px`;
+  const opensBelow = rect.bottom + 4 + dropdown.offsetHeight <= window.innerHeight;
+  dropdown.style.top  = opensBelow
+    ? `${rect.bottom + 4}px`
+    : `${Math.max(8, rect.top - 4 - dropdown.offsetHeight)}px`;
   dropdown.style.left = `${Math.max(8, rect.right - dropdown.offsetWidth)}px`;
 
   btn.dataset.menuOpen = 'true';
