@@ -254,6 +254,8 @@ function renderClientsList() {
                 ? `<button type="button" data-action="consignment-ledger"
                     data-id="${c.id}">Consignment Stock</button>`
                 : ''}
+              <button type="button" data-action="client-contract"
+                data-id="${c.id}">Contract PDF</button>
               <button type="button" data-action="edit-client" data-id="${c.id}">Edit</button>
               <button type="button" class="danger" data-action="delete-client"
                 data-id="${c.id}">Delete</button>
@@ -572,6 +574,164 @@ function printClientStatement(clientId) {
   if (!win) { showNotification('Allow pop-ups to print the statement', 'error'); return; }
   win.document.write(html);
   win.document.close();
+}
+
+/* ═══════════════════════════════════════════════════════
+   CONTRACT PDF — renders a client's current Order Portal terms
+   (sale/consignment, pricing rule, payment methods, rush fee) as a
+   printable document, with an optional signature block. Same
+   window.open + document.write + window.print() pattern as
+   printClientStatement above. Deliberately does NOT auto-print on load —
+   the signature toggle needs a moment of review first.
+═══════════════════════════════════════════════════════ */
+function printClientContract(clientId) {
+  const client = getSupplierClients().find(c => String(c.id) === String(clientId));
+  if (!client) return;
+  const cfg   = _getPortalConfig(client);
+  const brand = APP_STATE.settings?.brandName || 'Caflat.CORE';
+  const sym   = typeof getCurrencySymbol === 'function' ? getCurrencySymbol() : '₱';
+  const today = new Date().toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
+
+  // Mirrors resolvePortalPrice()'s three pricing modes as a plain sentence,
+  // not a per-product breakdown (see spec: "just the rule").
+  let pricingSentence;
+  if (cfg.pricing.mode === 'percent' && cfg.pricing.percentOff > 0) {
+    pricingSentence = `${cfg.pricing.percentOff}% off standard retail pricing applies.`;
+  } else if (cfg.pricing.mode === 'amount' && cfg.pricing.amountOff > 0) {
+    pricingSentence = `${sym}${cfg.pricing.amountOff} off standard retail pricing applies.`;
+  } else {
+    pricingSentence = 'Standard retail pricing applies.';
+  }
+  // A rule sentence alone would be misleading if this client also has
+  // per-product overrides — flag it rather than silently omit it.
+  const hasCustomPricing = Object.keys(cfg.pricing.custom || {}).length > 0;
+
+  const termsLines = [];
+  if (cfg.termsMode === 'consignment') {
+    termsLines.push('Consignment. They hold stock and pay only for what sells.');
+    if (cfg.settlementModes.payNow)       termsLines.push('They may pay in-portal when reporting sold stock.');
+    if (cfg.settlementModes.invoiceAfter) termsLines.push('Unsold-stock reports are billed after reconciliation.');
+    // Both settlement checkboxes are independent (no validation requires at
+    // least one) -- if the owner left both off, say nothing rather than
+    // print an empty promise about how settlement works.
+  } else {
+    termsLines.push('Standard Sale. They pay in full at checkout, in the order portal.');
+  }
+
+  // Same list-assembly the order portal itself uses when publishing
+  // (see resolveClientProductPrice's neighbors above) so this document can
+  // never list a method the portal doesn't actually offer.
+  const configuredMethodNames = (APP_STATE.settings?.paymentMethods || [])
+    .map(pm => pm.name).filter(Boolean);
+  const paymentMethods = [
+    ...(cfg.builtinMethods.cash    ? ['Cash'] : []),
+    ...(cfg.builtinMethods.invoice ? ['Invoice / On Account'] : []),
+    ...configuredMethodNames.filter(name => name.toLowerCase() !== 'cash')
+  ];
+
+  const contractHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+    <title>Supply Agreement — ${escapeHtml(client.name)}</title>
+    <style>
+      * { box-sizing:border-box; margin:0; padding:0; }
+      body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; color:#0c0b0a; padding:32px; max-width:760px; margin:0 auto; }
+      .hdr { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #0c0b0a; padding-bottom:16px; margin-bottom:24px; }
+      .brand { font-size:18px; font-weight:900; letter-spacing:-.02em; }
+      .doctitle { font-size:11px; font-weight:800; letter-spacing:2px; text-transform:uppercase; color:#666; margin-top:4px; }
+      .meta { text-align:right; font-size:12px; color:#666; }
+      .parties { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:28px; }
+      .party .l { font-size:9px; font-weight:800; letter-spacing:1px; text-transform:uppercase; color:#999; margin-bottom:4px; }
+      .party .n { font-size:15px; font-weight:800; margin-bottom:2px; }
+      .party .d { font-size:12px; color:#555; line-height:1.5; }
+      .section { margin-bottom:24px; }
+      .section h3 { font-size:10px; font-weight:800; letter-spacing:1.5px; text-transform:uppercase; color:#999; margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid #eee; }
+      .section p { font-size:13px; line-height:1.7; color:#222; }
+      .section p + p { margin-top:6px; }
+      .caveat { font-size:12px; color:#8a6d1f; background:#fef9ec; border:1px solid #f0e1b0; border-radius:6px; padding:8px 12px; margin-top:8px; }
+      .methods { display:flex; flex-wrap:wrap; gap:8px; }
+      .methods span { font-size:12px; font-weight:700; background:#f3f2f0; border:1px solid #e2e0dd; border-radius:999px; padding:4px 12px; }
+      .sig-block { margin-top:36px; padding-top:24px; border-top:2px solid #0c0b0a; }
+      .sig-title { font-size:11px; font-weight:800; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:20px; }
+      .sig-cols { display:grid; grid-template-columns:1fr 1fr; gap:40px; }
+      .sig-col .role { font-size:10px; font-weight:800; letter-spacing:1px; text-transform:uppercase; color:#999; margin-bottom:28px; }
+      .sig-line { border-bottom:1.5px solid #0c0b0a; height:1px; margin-bottom:6px; }
+      .sig-cap { font-size:9px; color:#999; margin-bottom:22px; }
+      .no-print { margin-bottom:24px; padding:12px 16px; background:#f6f5f3; border:1.5px solid #e2e0dd; border-radius:10px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+      .no-print label { font-size:13px; font-weight:700; display:flex; align-items:center; gap:8px; cursor:pointer; }
+      .no-print button { background:#0c0b0a; color:#fff; border:none; border-radius:8px; padding:10px 18px; font-size:12px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; cursor:pointer; }
+      @media print { .no-print { display:none; } body { padding:0; } }
+    </style></head><body>
+
+    <div class="no-print">
+      <label><input type="checkbox" id="sigToggle" checked onchange="document.getElementById('sigBlock').style.display=this.checked?'block':'none'"> Include signature lines</label>
+      <button onclick="window.print()">Print / Save as PDF</button>
+    </div>
+
+    <div class="hdr">
+      <div><div class="brand">${escapeHtml(brand)}</div><div class="doctitle">Supply Agreement &mdash; Terms &amp; Pricing</div></div>
+      <div class="meta">Generated ${today}</div>
+    </div>
+
+    <div class="parties">
+      <div class="party">
+        <div class="l">Supplier</div>
+        <div class="n">${escapeHtml(brand)}</div>
+        <div class="d">This business</div>
+      </div>
+      <div class="party">
+        <div class="l">Client</div>
+        <div class="n">${escapeHtml(client.name)}</div>
+        <div class="d">${[client.contact, client.email, client.address].filter(Boolean).map(escapeHtml).join(' &middot; ') || 'No contact info on file'}</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Terms</h3>
+      ${termsLines.map(l => `<p>${escapeHtml(l)}</p>`).join('')}
+    </div>
+
+    <div class="section">
+      <h3>Pricing</h3>
+      <p>${escapeHtml(pricingSentence)}</p>
+      ${hasCustomPricing ? `<div class="caveat">Some products carry individually negotiated pricing for this client — see the current order portal for exact figures.</div>` : ''}
+    </div>
+
+    <div class="section">
+      <h3>Payment Methods Accepted</h3>
+      ${paymentMethods.length
+        ? `<div class="methods">${paymentMethods.map(m => `<span>${escapeHtml(m)}</span>`).join('')}</div>`
+        : `<p style="color:#999;">No payment methods configured yet.</p>`}
+    </div>
+
+    ${cfg.rushFee.enabled ? `
+    <div class="section">
+      <h3>Rush Orders</h3>
+      <p>Orders requested with less than ${cfg.rushFee.thresholdHrs} hours' notice incur a ${cfg.rushFee.percent}% rush surcharge.</p>
+    </div>` : ''}
+
+    <div class="sig-block" id="sigBlock">
+      <div class="sig-title">Agreed and Accepted</div>
+      <div class="sig-cols">
+        <div class="sig-col">
+          <div class="role">${escapeHtml(brand)}</div>
+          <div class="sig-line"></div><div class="sig-cap">Signature</div>
+          <div class="sig-line"></div><div class="sig-cap">Printed name</div>
+          <div class="sig-line"></div><div class="sig-cap">Date</div>
+        </div>
+        <div class="sig-col">
+          <div class="role">${escapeHtml(client.name)}</div>
+          <div class="sig-line"></div><div class="sig-cap">Signature</div>
+          <div class="sig-line"></div><div class="sig-cap">Printed name</div>
+          <div class="sig-line"></div><div class="sig-cap">Date</div>
+        </div>
+      </div>
+    </div>
+
+    </body></html>`;
+
+  const contractWin = window.open('', '_blank');
+  if (!contractWin) { showNotification('Allow pop-ups to generate the contract', 'error'); return; }
+  contractWin.document.write(contractHtml);
+  contractWin.document.close();
 }
 
 /* ═══════════════════════════════════════════════════════
