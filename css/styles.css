@@ -880,6 +880,33 @@ tbody tr:hover td { background: var(--gray-50); }
   gap: 6px;
   white-space: nowrap;
 }
+
+/* Those four tracks (280px) exist for tables whose rows carry DIFFERENT
+   actions — supply orders (View/Status/Checkout/menu) and sales (Void and
+   Refund only on some rows). Fixed tracks are what keep those staggered rows
+   on a shared vertical rail.
+
+   Products, Ingredients and Inventory render the SAME buttons on every row,
+   so they never needed the tracks — yet they still reserved all 280px, about
+   312px of column for ~90px of buttons. That starved the content columns and
+   is what pushed Products' name, category and status pill into wrapping.
+   With identical rows, flex sizes to the real content and still aligns,
+   because every row measures the same. */
+#productsTable .table-actions,
+#ingredientsTable .table-actions,
+#inventoryTable .table-actions {
+  display: flex;
+}
+
+/* Sales rows DO vary (a voided sale has only Receipt; a pending one has
+   Complete/Cancel), so they keep fixed tracks — but they were inheriting the
+   supply widths, which are sized for View/Status/Checkout/menu. The mismatch
+   left Receipt 11px short and squeezed Refund into the 28px slot meant for a
+   "···" icon, so both labels overflowed their pills. Same total width, sized
+   to what these buttons actually need. */
+#salesTable .table-actions {
+  grid-template-columns: 74px 78px 56px 70px;
+}
 .table-actions > .btn { width: 100%; justify-content: center; }
 
 /* Row overflow menu — a "⋯" button that reveals secondary row actions.
@@ -934,6 +961,10 @@ tbody tr:hover td { background: var(--gray-50); }
   letter-spacing: 1px;
   text-transform: uppercase;
   border: 1px solid var(--danger-border);
+  /* A status pill must never break mid-phrase ("Sold Out" -> "SOLD" / "OUT").
+     nowrap also raises the pill's min-content width, so an auto-layout table
+     allocates the column enough room instead of squeezing it to one word. */
+  white-space: nowrap;
 }
 
 .badge-low-stock::before {
@@ -957,6 +988,7 @@ tbody tr:hover td { background: var(--gray-50); }
   letter-spacing: 1px;
   text-transform: uppercase;
   border: 1px solid #bbf7d0;
+  white-space: nowrap;
 }
 
 .badge-ok::before {
