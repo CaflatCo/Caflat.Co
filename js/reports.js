@@ -131,7 +131,7 @@ function renderReportKPIs(fromDate, toDate, prev) {
 /* ── 2. Revenue Trend ── */
 function renderRevenueChart(fromDate, toDate) {
   const canvas = document.getElementById('reportRevenueChart');
-  if (!canvas || typeof Chart === 'undefined') return;
+  if (chartUnavailable(canvas)) return;
   const trend = getDailySalesTrend(fromDate, toDate);
   if (reportChartInstance) { reportChartInstance.destroy(); reportChartInstance = null; }
   if (!trend.labels.length) {
@@ -407,7 +407,14 @@ function renderCategoryPerformance(fromDate, toDate) {
       }).join('')}
     </div>`;
   requestAnimationFrame(() => {
-    if (typeof Chart === 'undefined') return;
+    // This block draws one summary canvas plus a canvas per category, so the
+    // notice goes on each of them rather than on a single element.
+    if (typeof Chart === 'undefined') {
+      chartUnavailable(document.getElementById(summaryId));
+      activeCats.forEach(cat => chartUnavailable(document.getElementById(
+        `catChart_${cat.category.replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'')}`)));
+      return;
+    }
     const sc = document.getElementById(summaryId);
     const ct = getChartTheme();
     if (sc) {
@@ -641,7 +648,7 @@ function renderBreakEvenReport(fromDate, toDate) {
 
 function renderCumulativePureProfitChart(fromDate, toDate) {
   const canvas = document.getElementById('pureProfitCumulativeChart');
-  if (!canvas || typeof Chart === 'undefined') return;
+  if (chartUnavailable(canvas)) return;
   const sales = getCompletedSales(fromDate, toDate);
   const products = APP_STATE.products||[];
   const soldMap={}, dailyMap={};
@@ -712,7 +719,7 @@ function renderBestMarginProducts(fromDate, toDate) {
 
 function renderPureProfitByCategory(fromDate, toDate) {
   const canvas=document.getElementById('pureProfitByCategoryChart');
-  if(!canvas || typeof Chart === 'undefined') return;
+  if (chartUnavailable(canvas)) return;
   const analysis=typeof getBreakEvenAnalysis==='function'?getBreakEvenAnalysis(fromDate,toDate):[];
   const catMap={};
   analysis.forEach(p=>{const cat=p.category||'Uncategorised';catMap[cat]=(catMap[cat]||0)+p.actualPureProfit;});
@@ -739,7 +746,7 @@ function renderPureProfitByCategory(fromDate, toDate) {
 
 function renderRevenueVsCostChart(fromDate, toDate) {
   const canvas=document.getElementById('revenueVsCostChart');
-  if(!canvas || typeof Chart === 'undefined') return;
+  if (chartUnavailable(canvas)) return;
   const analysis=typeof getBreakEvenAnalysis==='function'?getBreakEvenAnalysis(fromDate,toDate):[];
   const top=analysis.filter(p=>p.soldQty>0).sort((a,b)=>(b.soldQty*b.price)-(a.soldQty*a.price)).slice(0,8);
   if(!top.length){

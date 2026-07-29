@@ -55,6 +55,34 @@ function showNotification(message, type = 'info') {
   }, 3000);
 }
 
+/* Chart.js is loaded from a CDN (see index.html), so it can simply be absent:
+   offline, venue wifi blocking cdn.jsdelivr.net, or a CDN outage. Every chart
+   site used to just `return` in that case, leaving a full-size blank panel
+   that reads as a broken app rather than a missing library.
+
+   Returns true when charting is unavailable (caller should stop), and leaves a
+   short explanation in place of the empty canvas. */
+function chartUnavailable(canvas) {
+  if (!canvas) return true;
+  const holder = canvas.parentElement;
+  const existing = holder && holder.querySelector('.chart-unavailable-note');
+
+  if (typeof Chart !== 'undefined') {
+    if (existing) existing.remove();          // recovered — clear the notice
+    canvas.style.display = '';
+    return false;
+  }
+
+  canvas.style.display = 'none';
+  if (holder && !existing) {
+    const note = document.createElement('div');
+    note.className = 'chart-unavailable-note';
+    note.textContent = 'Chart unavailable offline. Reconnect to load it.';
+    holder.appendChild(note);
+  }
+  return true;
+}
+
 function openModal(modalId) {
   const modal = document.getElementById(modalId);
   if (!modal) return;

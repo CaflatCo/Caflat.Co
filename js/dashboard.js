@@ -68,7 +68,7 @@ function renderDashboardKPIAlerts(kpi) {
 /* ── Sales trend chart ── */
 function renderDashboardChart() {
   const canvas = document.getElementById('dashboardChart');
-  if (!canvas || typeof Chart === 'undefined') return;
+  if (chartUnavailable(canvas)) return;
 
   const trend = getDailySalesTrend();
 
@@ -447,7 +447,7 @@ function renderAnalyticsPanel() {
 
 function _renderAnalyticsChart(trend) {
   const canvas = document.getElementById('analyticsChart');
-  if (!canvas || typeof Chart === 'undefined') return;
+  if (chartUnavailable(canvas)) return;
 
   if (_analyticsChartInstance) {
     _analyticsChartInstance.destroy();

@@ -947,6 +947,26 @@ tbody tr:hover td { background: var(--gray-50); }
 .low-stock-row td { background: #fffbfb !important; }
 .low-stock-row td:first-child { border-left: 3px solid var(--danger); }
 
+/* Stands in for a chart when Chart.js (CDN) didn't load — see
+   chartUnavailable() in utils.js. Fills the space the canvas would have
+   occupied so the panel doesn't collapse or read as an empty box. */
+.chart-unavailable-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 90px;
+  height: 100%;
+  padding: 16px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .3px;
+  color: var(--gray-400);
+  background: var(--gray-50);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+}
+
 /* ═══ BADGES ═══ */
 .badge-low-stock {
   display: inline-flex;
