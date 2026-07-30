@@ -93,27 +93,32 @@ function saveProduct() {
 
   setProducts(products);
 
-  // If this product is in Finished Goods mode and has a stock value set,
-  // sync that stock to the finishedGoods inventory as an opening/manual entry.
-  // Only sync when stock actually changed or it's a new product.
+  // Finished-goods products keep their real stock in the FG ledger, and
+  // deductProductStockForCart() deliberately never writes product.stock for
+  // them — so that field is a frozen snapshot that goes stale the moment
+  // anything sells.
+  //
+  // The delta therefore has to be measured against the LIVE ledger, not that
+  // stale mirror. Measuring against product.stock silently shrank every
+  // restock by however much had sold since the last edit, and once a product
+  // sold out the delta went negative and _setFGRecord's Math.max(0, …) clamp
+  // swallowed the restock completely, pinning the product at zero forever.
+  //
+  // Treat the number typed in the form as the absolute count on hand, which
+  // is what "Stock" reads as. openProductModal() pre-fills the same live
+  // figure, so opening and saving without touching the field is a no-op.
   if (typeof isFinishedGoodsProduct === 'function' && isFinishedGoodsProduct(data)) {
-    const newStock    = Number(data.stock || 0);
-    const prevStock   = Number(existing?.stock || 0);
-    const isNew       = !existing;
+    const target  = Number(data.stock || 0);
+    // Raw ledger stock, not getFGAvailable() — reserved units are physically
+    // on the shelf, so they belong in the count the owner is entering.
+    const current = typeof getFGStock === 'function' ? Number(getFGStock(data.id) || 0) : 0;
+    const delta   = target - current;
 
-    if (isNew && newStock > 0) {
-      // New FG product — set opening stock in finishedGoods
-      if (typeof _setFGRecord === 'function') {
-        _setFGRecord(data.id, data.name, newStock, 0,
-          'Opening stock — set on product creation', 'manual-entry');
-      }
-    } else if (!isNew && newStock !== prevStock) {
-      // Existing product — stock was manually adjusted
-      const delta = newStock - prevStock;
-      if (typeof _setFGRecord === 'function') {
-        _setFGRecord(data.id, data.name, delta, 0,
-          'Manual stock adjustment via Products', 'manual-entry');
-      }
+    if (delta !== 0 && typeof _setFGRecord === 'function') {
+      _setFGRecord(data.id, data.name, delta, 0,
+        existing ? 'Manual stock adjustment via Products'
+                 : 'Opening stock — set on product creation',
+        'manual-entry');
     }
     if (typeof renderFinishedGoodsTable === 'function') renderFinishedGoodsTable();
   }
@@ -121,6 +126,19 @@ function saveProduct() {
   closeModal('productModal');
   clearProductForm();
   showNotification('Product saved', 'success');
+}
+
+/* What the Stock field should show. For finished-goods products product.stock
+   is a frozen mirror (see saveProduct), so the form has to read the live FG
+   ledger — otherwise it offers a stale number as the starting point and the
+   owner "corrects" a figure that was already wrong. Raw stock, not available,
+   to match what saveProduct writes back. */
+function _productStockForForm(product) {
+  if (typeof isFinishedGoodsProduct === 'function' && isFinishedGoodsProduct(product)
+      && typeof getFGStock === 'function') {
+    return getFGStock(product.id);
+  }
+  return product.stock;
 }
 
 function clearProductForm() {
@@ -159,7 +177,7 @@ function hydrateProductForm(product) {
   setElementValue('productId', product.id);
   setElementValue('productName', product.name);
   setElementValue('productPrice', product.price);
-  setElementValue('productStock', product.stock);
+  setElementValue('productStock', _productStockForForm(product));
   setElementValue('productReorderLevel', product.reorderLevel);
   setElementValue('productShelfLifeDays', product.shelfLifeDays);
   setElementValue('variantType', product.variantType || 'custom');
@@ -646,7 +664,7 @@ function cloneProduct(productId) {
   setElementValue('productId', '');
   setElementValue('productName', `Copy of ${product.name}`);
   setElementValue('productPrice', product.price);
-  setElementValue('productStock', product.stock);
+  setElementValue('productStock', _productStockForForm(product));
   setElementValue('productReorderLevel', product.reorderLevel);
   setElementValue('productShelfLifeDays', product.shelfLifeDays);
   setElementValue('recipeMode',  product.recipeMode  || 'unit');
