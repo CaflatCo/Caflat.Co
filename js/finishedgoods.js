@@ -105,12 +105,23 @@ function deductFGForCart(cart) {
   if (typeof renderFinishedGoodsTable === 'function') renderFinishedGoodsTable();
 }
 
-/* ── Supply — reserve and deduct finished goods ── */
+/* ── Supply — reserve and deduct finished goods ──
+   These take a supply ORDER, whose line items carry `qty` (see
+   _supplyItemsToCart, which maps item.qty -> cart.quantity). Reading
+   `item.quantity` here therefore resolved to undefined and every amount
+   computed to 0, so delivering a supply order logged a movement but never
+   moved any finished-goods stock — the goods left the building and the count
+   stayed put. Cart-shaped objects use `quantity`, so accept either. */
+function _fgLineQty(item) {
+  return Number(item.qty ?? item.quantity ?? 0) || 0;
+}
+
 function reserveFGForSupply(order) {
   (order.items || []).forEach(item => {
     const product = (APP_STATE.products || []).find(p => String(p.id) === String(item.productId));
     if (!product || !isFinishedGoodsProduct(product)) return;
-    const qty = Number(item.quantity || 0);
+    const qty = _fgLineQty(item);
+    if (!qty) return;
     _setFGRecord(product.id, product.name, 0, qty,
       'Supply reserved: ' + (order.clientName || order.id), 'supply-reserve');
   });
@@ -121,10 +132,28 @@ function deductFGForSupply(order) {
   (order.items || []).forEach(item => {
     const product = (APP_STATE.products || []).find(p => String(p.id) === String(item.productId));
     if (!product || !isFinishedGoodsProduct(product)) return;
-    const qty = Number(item.quantity || 0);
+    const qty = _fgLineQty(item);
+    if (!qty) return;
     // Remove stock and release the reservation simultaneously
     _setFGRecord(product.id, product.name, -qty, -qty,
       'Supply delivered: ' + (order.clientName || order.id), 'supply-deduction');
+  });
+  if (typeof renderFinishedGoodsTable === 'function') renderFinishedGoodsTable();
+}
+
+/* Inverse of deductFGForSupply — puts delivered goods back on the shelf when a
+   supply order is cancelled, voided, or moved back before DELIVERED. Only the
+   stock side is restored: the delivery already zeroed the reservation, so
+   adding reserved back here would hold stock against an order that no longer
+   exists. */
+function restoreFGForSupply(order) {
+  (order.items || []).forEach(item => {
+    const product = (APP_STATE.products || []).find(p => String(p.id) === String(item.productId));
+    if (!product || !isFinishedGoodsProduct(product)) return;
+    const qty = _fgLineQty(item);
+    if (!qty) return;
+    _setFGRecord(product.id, product.name, qty, 0,
+      'Supply restored: ' + (order.clientName || order.id), 'supply-restore');
   });
   if (typeof renderFinishedGoodsTable === 'function') renderFinishedGoodsTable();
 }
@@ -133,7 +162,8 @@ function releaseFGReserveForSupply(order) {
   (order.items || []).forEach(item => {
     const product = (APP_STATE.products || []).find(p => String(p.id) === String(item.productId));
     if (!product || !isFinishedGoodsProduct(product)) return;
-    const qty = Number(item.quantity || 0);
+    const qty = _fgLineQty(item);
+    if (!qty) return;
     _setFGRecord(product.id, product.name, 0, -qty,
       'Supply cancelled: ' + (order.clientName || order.id), 'supply-reserve-release');
   });
@@ -374,6 +404,7 @@ window.deductFGForCart            = deductFGForCart;
 window.reserveFGForSupply         = reserveFGForSupply;
 window.deductFGForSupply          = deductFGForSupply;
 window.releaseFGReserveForSupply  = releaseFGReserveForSupply;
+window.restoreFGForSupply         = restoreFGForSupply;
 window.openFGAdjustmentModal      = openFGAdjustmentModal;
 window.saveFGAdjustment           = saveFGAdjustment;
 window.renderFinishedGoodsTable   = renderFinishedGoodsTable;

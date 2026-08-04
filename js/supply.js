@@ -2426,8 +2426,11 @@ function _restoreSupplyStock(order) {
   });
   updateState('products', () => updatedProducts);
 
-  // Release FG reservations for any FG-mode products in this order
-  if (typeof releaseFGReserveForSupply === 'function') releaseFGReserveForSupply(order);
+  // Put FG-mode goods back on the shelf. This is only ever reached for an
+  // order whose stock was actually deducted, and that deduction took the
+  // stock down — so releasing a reservation (which delivery already zeroed)
+  // restores nothing. The stock itself has to come back.
+  if (typeof restoreFGForSupply === 'function') restoreFGForSupply(order);
 
   _logInventoryMovements(order, 'supply-stock-restored', 0,
     `Restored from supply order ${order.invoiceNumber}`);
