@@ -26,6 +26,14 @@ function round2(value) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+// Local calendar day as YYYY-MM-DD. Deliberately NOT toISOString(), which
+// returns the UTC day — at UTC+8 that reads as "yesterday" for every local
+// time before 08:00, i.e. exactly the early-morning hours a cafe trades in.
+function localDayKey(d) {
+  d = d || new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function sanitizeText(value) {
   return String(value || '').trim();
 }
@@ -213,6 +221,7 @@ window.generateId        = generateId;
 window.formatCurrency    = formatCurrency;
 window.safeNumber        = safeNumber;
 window.sanitizeText      = sanitizeText;
+window.localDayKey       = localDayKey;
 window.escapeHtml        = escapeHtml;
 window.showNotification  = showNotification;
 window.openModal         = openModal;
