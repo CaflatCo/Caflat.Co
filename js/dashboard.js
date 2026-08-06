@@ -6,7 +6,7 @@
 
 let dashboardChartInstance = null;
 
-function getChartTheme() {
+function getDashboardChartTheme() {
   const dark = document.documentElement.dataset.theme === 'dark';
   return {
     bar:     dark ? '#f0eeeb'               : '#000',
@@ -77,7 +77,7 @@ function renderDashboardChart() {
     dashboardChartInstance = null;
   }
 
-  const ct = getChartTheme();
+  const ct = getDashboardChartTheme();
 
   if (!trend.labels.length) {
     const ctx = canvas.getContext('2d');
@@ -454,7 +454,7 @@ function _renderAnalyticsChart(trend) {
     _analyticsChartInstance = null;
   }
 
-  const ct = getChartTheme();
+  const ct = getDashboardChartTheme();
 
   if (!trend.values.some(v => v > 0)) {
     const ctx = canvas.getContext('2d');
