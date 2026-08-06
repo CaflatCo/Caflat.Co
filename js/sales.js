@@ -496,16 +496,16 @@ function calculateCartDiscount() {
   const { value, type } = getDiscountState();
   if (!value || value <= 0) return 0;
   const discount = type === 'percent' ? subtotal * (value / 100) : value;
-  return Math.max(0, Math.min(discount, subtotal));
+  return round2(Math.max(0, Math.min(discount, subtotal)));
 }
 
 function calculateCartTax() {
   const taxRate = Number(APP_STATE.settings?.taxRate || 0);
-  return Math.max(0, (calculateCartSubtotal() - calculateCartDiscount()) * (taxRate / 100));
+  return round2(Math.max(0, (calculateCartSubtotal() - calculateCartDiscount()) * (taxRate / 100)));
 }
 
 function calculateCartTotal() {
-  return Math.max(0, calculateCartSubtotal() - calculateCartDiscount() + calculateCartTax());
+  return round2(Math.max(0, calculateCartSubtotal() - calculateCartDiscount() + calculateCartTax()));
 }
 
 function updateCartSummary() {
@@ -742,10 +742,10 @@ function buildTransactionSnapshot({ status, paymentStatus, paymentMethod, tender
     recipeMode: item.recipeMode || 'unit', batchYield: Number(item.batchYield || 1)
   }));
 
-  const subtotal = items.reduce((s, i) => s + i.total, 0);
+  const subtotal = round2(items.reduce((s, i) => s + i.total, 0));
   const discount = calculateCartDiscount();
   const tax = calculateCartTax();
-  const total = Math.max(0, subtotal - discount + tax);
+  const total = round2(Math.max(0, subtotal - discount + tax));
   const timestamp = new Date().toISOString();
   const receiptNumber = generateReceiptNumber();
   const orderType = APP_STATE.ui?.orderType || 'Dine In';
