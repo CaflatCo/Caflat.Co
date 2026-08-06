@@ -187,7 +187,7 @@ function openProductionJobFromSupplyOrder(order) {
     name: 'Order ' + (order.invoiceNumber || '') + ' — ' + (order.clientName || ''),
     fundingType: 'CLIENT',
     clientName: order.clientName || '',
-    scheduledDate: String(order.requestedDate || order.orderDate || new Date().toISOString()).slice(0, 10),
+    scheduledDate: String(order.requestedDate || order.orderDate || localDayKey()).slice(0, 10),
     totalValue: Number(order.grandTotal) || 0,
     notes: 'From supply order ' + (order.invoiceNumber || order.id),
     sourceSupplyOrderId: order.id,
@@ -201,7 +201,7 @@ function _blankJob() {
   return {
     id: generateId(),
     name: '', fundingType: 'RETAIL',
-    scheduledDate: new Date().toISOString().slice(0,10),
+    scheduledDate: localDayKey(),
     clientName:'', totalValue:0, downPayment:0, fullPayment:0,
     eventId: null, notes:'',
     products: [],       // { id, productId, productName, targetQty, batchSize,
@@ -1264,8 +1264,8 @@ function renderProductionCalendar() {
     <!-- Calendar grid -->
     <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;">
       ${days.map((d, i) => {
-        const dateStr  = d.toISOString().slice(0,10);
-        const isToday  = dateStr === today.toISOString().slice(0,10);
+        const dateStr  = localDayKey(d);
+        const isToday  = dateStr === localDayKey(today);
         const dayJobs  = jobsByDate[dateStr] || [];
         const dayLabel = d.toLocaleDateString('en-PH',{day:'numeric'});
 
@@ -1401,7 +1401,7 @@ function useProductionTemplate(templateId) {
     id:              generateId(),
     name:            template.name,
     fundingType:     template.fundingType || 'RETAIL',
-    scheduledDate:   new Date().toISOString().slice(0,10),
+    scheduledDate:   localDayKey(),
     clientName:'', totalValue:0, downPayment:0, fullPayment:0,
     eventId: null,
     notes:           template.notes || '',
