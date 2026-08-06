@@ -374,7 +374,7 @@ function getDailyDiscrepancies() {
 
   const byDay = new Map();
   movements.forEach(m => {
-    const day = new Date(m.createdAt || Date.now()).toISOString().slice(0, 10);
+    const day = localDayKey(new Date(m.createdAt || Date.now()));
     if (!byDay.has(day)) byDay.set(day, { added: 0, used: 0, adjustments: 0 });
     const entry = byDay.get(day);
     entry.added       += Number(m.quantityAdded || 0);

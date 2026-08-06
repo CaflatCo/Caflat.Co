@@ -1190,7 +1190,7 @@ function renderEventBreakEvenPanel() {
 
   // An event dated today with no session running means sales are going
   // untagged. Say so before the whole day is lost rather than after.
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDayKey();
   const needsSession = !isActive && String(event.date || '') === today;
 
   if (be.unset) {

@@ -358,7 +358,7 @@ function applyTimePill(preset) {
   const fromEl = document.getElementById('salesFromDate');
   const toEl   = document.getElementById('salesToDate');
   if (!fromEl || !toEl) return;
-  const toISO = d => d.toISOString().slice(0, 10);
+  const toISO = d => localDayKey(d);
   const now = new Date();
   switch (preset) {
     case 'today': {
