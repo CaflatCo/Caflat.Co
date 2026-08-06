@@ -207,7 +207,8 @@ window.getKPISummary = getKPISummary;
 /* ── Channel revenue breakdown ── */
 function getRevenueByChannel(fromDate, toDate) {
   const map = {};
-  getCompletedSales(fromDate, toDate).forEach(sale => {
+  const sales = typeof getCompletedSales === 'function' ? getCompletedSales(fromDate, toDate) : [];
+  sales.forEach(sale => {
     const ch = sale.channel || sale.orderType || 'Dine In';
     map[ch] = (map[ch] || 0) + Number(sale.totals?.total ?? sale.total ?? 0);
   });
@@ -221,7 +222,8 @@ function getRevenueByChannel(fromDate, toDate) {
 
 function getOrdersByChannel(fromDate, toDate) {
   const map = {};
-  getCompletedSales(fromDate, toDate).forEach(sale => {
+  const sales = typeof getCompletedSales === 'function' ? getCompletedSales(fromDate, toDate) : [];
+  sales.forEach(sale => {
     const ch = sale.channel || sale.orderType || 'Dine In';
     map[ch] = (map[ch] || 0) + 1;
   });

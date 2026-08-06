@@ -498,27 +498,6 @@ function getEventBreakEven(eventId) {
   };
 }
 
-/* ── Channel analytics ── */
-function getRevenueByChannel(fromDate, toDate) {
-  const map = {};
-  const sales = typeof getCompletedSales === 'function' ? getCompletedSales(fromDate, toDate) : [];
-  sales.forEach(sale => {
-    const ch = sale.channel || sale.orderType || 'Dine In';
-    map[ch] = (map[ch] || 0) + Number(sale.totals?.total ?? sale.total ?? 0);
-  });
-  return map;
-}
-
-function getOrdersByChannel(fromDate, toDate) {
-  const map = {};
-  const sales = typeof getCompletedSales === 'function' ? getCompletedSales(fromDate, toDate) : [];
-  sales.forEach(sale => {
-    const ch = sale.channel || sale.orderType || 'Dine In';
-    map[ch] = (map[ch] || 0) + 1;
-  });
-  return map;
-}
-
 /* ── Coffee Cart view render ── */
 function renderChannelBreakdown() {
   const container = document.getElementById('channelBreakdownContainer');
@@ -631,8 +610,6 @@ window.renderChannelBreakdown   = renderChannelBreakdown;
 window.renderChannelSelector    = renderChannelSelector;
 window.setActiveChannel         = setActiveChannel;
 window.applyCoffeeCartModeToggle= applyCoffeeCartModeToggle;
-window.getRevenueByChannel      = getRevenueByChannel;
-window.getOrdersByChannel       = getOrdersByChannel;
 window.CART_CHANNELS            = CART_CHANNELS;
 
 /* ═══════════════════════════════════════════════════════
