@@ -135,17 +135,29 @@ function generateInvoiceNumber() {
   return `INV-${year}-${seq}`;  // e.g. INV-25-00001
 }
 
-/* ── Origin lot/batch number generators ── */
+/* ── Origin lot/batch number generators ──
+   Sequenced off the highest number already issued, NOT array length:
+   with LOT-2026-001..003, deleting 002 leaves length 2, so a length-based
+   counter would re-issue 003 and collide with a live traceability id.
+   Kept non-incrementing so re-opening the lot/batch modal previews a stable
+   number instead of burning one per open. */
+function _highestIssuedNumber(records, field, prefix) {
+  return (Array.isArray(records) ? records : []).reduce((max, rec) => {
+    const match = String(rec?.[field] || '').match(new RegExp(`^${prefix}-\\d{4}-(\\d+)$`));
+    return match ? Math.max(max, Number(match[1])) : max;
+  }, 0);
+}
+
 function generateLotNumber() {
   const year = new Date().getFullYear();
-  const count = (APP_STATE.originLots || []).length + 1;
-  return `LOT-${year}-${String(count).padStart(3,'0')}`;
+  const next = _highestIssuedNumber(APP_STATE.originLots, 'lotNumber', 'LOT') + 1;
+  return `LOT-${year}-${String(next).padStart(3,'0')}`;
 }
 
 function generateBatchNumber() {
   const year = new Date().getFullYear();
-  const count = (APP_STATE.originBatches || []).length + 1;
-  return `BATCH-${year}-${String(count).padStart(3,'0')}`;
+  const next = _highestIssuedNumber(APP_STATE.originBatches, 'batchNumber', 'BATCH') + 1;
+  return `BATCH-${year}-${String(next).padStart(3,'0')}`;
 }
 
 function generateOriginOrderNumber() {
