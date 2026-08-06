@@ -74,6 +74,14 @@ function persistState() {
     if (typeof scheduleKpiSnapshotPush === 'function') scheduleKpiSnapshotPush();
   } catch (error) {
     console.error('Failed to persist state', error);
+    // Quota exhaustion is silent otherwise — the operator keeps trading
+    // against state that is no longer being saved, and loses it on reload.
+    // Gated so unrelated serialisation errors don't spam them mid-service.
+    const quotaHit = error && (error.name === 'QuotaExceededError'
+      || error.name === 'NS_ERROR_DOM_QUOTA_REACHED' || error.code === 22);
+    if (quotaHit && typeof showNotification === 'function') {
+      showNotification('Storage full — changes are NOT being saved. Export a backup and archive old data now.', 'error');
+    }
   }
 }
 
@@ -319,7 +327,11 @@ function resetBusinessData() {
 // Full factory reset — wipes absolutely everything
 function fullFactoryReset() {
   if (typeof resetState === 'function') resetState();
+  // resetState() spares these so the standard reset can preserve them;
+  // a factory reset promises to wipe everything, so drop them here.
   APP_STATE.labCategoryPresets = [];
+  APP_STATE.laborPeople = [];
+  APP_STATE.recipeCatalog = [];
   APP_STATE.settings = {
     brandName:            'Caflat.CORE',
     taxRate:              0,

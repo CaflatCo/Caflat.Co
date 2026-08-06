@@ -102,6 +102,18 @@ function resetState() {
   APP_STATE.treasuryAccounts = [];
   APP_STATE.treasuryTransactions = [];
   APP_STATE.dayCloses = [];
+  // These are persisted by persistState() too — leaving them out meant stock
+  // and production data survived a "full factory reset" and got written back
+  // to storage on the very next save.
+  APP_STATE.finishedGoods = [];
+  APP_STATE.fgMovements = [];
+  APP_STATE.labDrafts = [];
+  APP_STATE.shoppingLists = [];
+  APP_STATE.productionJobs = [];
+  APP_STATE.productionTemplates = [];
+  APP_STATE.costLabOverrides = {};
+  APP_STATE.costHistory = [];
+  APP_STATE.costLabSettings = { targetMargin: 60, laborCostPerUnit: 0, overheadCostPerUnit: 0 };
   persistState();
 }
 
